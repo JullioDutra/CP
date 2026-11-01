@@ -19,6 +19,8 @@ sorteia a grade, controla o relógio, valida as palavras e guarda os rankings.
   Grade Amigável (novo), placar ao vivo, revelação, pódio, revanche e reconexão.
 - ✅ **Fase 2:** Caça-Palavras Corrida, Sudoku Duelo, Modo Telão (QR code + celular como
   controle), sons, **palavras comuns** (35 mil, com verbos conjugados) e **IA verificadora** de palavras.
+- ✅ **Ajustes pós-Fase 2:** palavras repetidas **valem pontos** (só aparecem no "tanque" de únicas × repetidas);
+  Grade Amigável virou **Grade Bônus** (casas ×2/×3); **grade 6×6** (solo e em grupo); novo visual claro e suave.
 - ⏭️ Próximo: **Fase 3** (ranking global e perfis sem login).
 
 ---
@@ -76,14 +78,14 @@ Estas funções vêm dos jogos de palavras em grupo, como o que você mostrou:
 ### Clássicos (regras conhecidas do gênero)
 | Modo | Regras |
 |---|---|
-| **Grade Relâmpago em Grupo** | 4×4 (ou 5×5), 3 rodadas de 3 min. **Regra clássica: uma palavra achada por 2 ou mais jogadores não pontua para ninguém.** Isso obriga a procurar palavras que os outros não veem. |
+| **Grade Relâmpago em Grupo** | 4×4 (ou 5×5), 3 rodadas de 3 min. **Decisão:** palavras repetidas valem pontos para todos; o fim da rodada mostra o tanque de únicas × repetidas. |
 | **Caça-Palavras Corrida** | Todos jogam na mesma grade e no mesmo tema. Quem marca a palavra primeiro leva os pontos, e ela fica com a cor desse jogador para todos. |
 | **Sudoku Duelo** | O mesmo sudoku para todos. Vence quem resolve primeiro; erros custam tempo. |
 
 ### Novos (exclusivos do Trama)
 | Modo | Regras |
 |---|---|
-| **Grade Amigável** | Igual à Relâmpago, mas palavras repetidas **pontuam**. Palavras exclusivas ganham **+50%**. Mais leve para jogar em família. |
+| **Grade Bônus** | Mesma grade com casas ×2 e ×3 que multiplicam a palavra (substituiu a Grade Amigável). |
 | **Arena Sobrevivência** | Todos começam com 60 s. Suas palavras **roubam 1 s** de cada adversário. Quem zerar o tempo está fora e vence o último que sobrar. |
 | **Times 2×2 / 3×3** | Pontos somados por time e palavras compartilhadas dentro do time. Palavras repetidas entre times anulam. |
 | **Desafio do Dia Global** | Uma grade por dia para todo mundo, uma tentativa e ranking mundial do dia. |

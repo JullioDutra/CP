@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { loadTestDict, fakeClock, fakeLlmFetch } from './helpers.mjs';
 import { wordPoints, solve } from '../js/core/letters.js';
 import { isWord } from '../js/core/dict.js';
-import { scoreRound, sanitizeOptions, defaultOptions, sudokuDuelScore } from '../js/core/multimodes.js';
+import { scoreRound, sanitizeOptions, defaultOptions, sudokuDuelScore, bonusCells, bonusMultiplier } from '../js/core/multimodes.js';
+import { createRng } from '../js/core/rng.js';
 import { Room, cleanName } from '../server/room.js';
 import { createVerifier } from '../server/ai.js';
 loadTestDict();
@@ -10,13 +11,21 @@ loadTestDict();
 // ---------- regras ----------
 assert.deepEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(wordPoints), [0, 1, 2, 4, 7, 11, 16, 22, 29, 36]);
 const byPlayer = { a: ['casa', 'gato', 'sapato'], b: ['casa', 'rato'], c: [] };
-const cl = scoreRound('grupo-classico', byPlayer);
-assert.equal(cl.players.a.score, 2 + 7);
-assert.equal(cl.players.a.words.find((w) => w.w === 'casa').status, 'cancelled');
-const am = scoreRound('grupo-amigavel', byPlayer);
-assert.equal(am.players.a.score, 2 + 3 + Math.ceil(7 * 1.5));
+const sr = scoreRound(byPlayer);
+assert.equal(sr.players.a.score, 2 + 2 + 7, 'repetida vale pontos normalmente');
+assert.equal(sr.players.b.score, 2 + 2);
+assert.equal(sr.players.a.words.find((w) => w.w === 'casa').status, 'shared');
+assert.equal(sr.players.a.words.find((w) => w.w === 'casa').by, 2);
+assert.equal(sr.players.a.unique, 2);
+assert.equal(sr.players.a.shared, 1);
+assert.deepEqual(sr.totals, { distinct: 4, unique: 3, shared: 1 });
+assert.equal(scoreRound({ a: ['casa'] }, () => 10).players.a.score, 10);
+// bônus
+assert.equal(bonusMultiplier([0, 1, 2], { 1: '×2', 2: '×3' }), 6);
+assert.equal(Object.keys(bonusCells(createRng(1), 6)).length, 4);
 // opções por modo
-assert.deepEqual(sanitizeOptions({ mode: 'x', rounds: 99, seconds: 90, size: 5 }), { mode: 'grupo-classico', rounds: 3, seconds: 90, size: 5 });
+assert.deepEqual(sanitizeOptions({ mode: 'x', rounds: 99, seconds: 90, size: 6 }), { mode: 'grupo-classico', rounds: 3, seconds: 90, size: 6 });
+assert.equal(sanitizeOptions({ size: 7 }).size, 4);
 assert.deepEqual(sanitizeOptions({ mode: 'sudoku-duelo' }, defaultOptions()), { mode: 'sudoku-duelo', rounds: 1, difficulty: 'medio', seconds: 600 });
 assert.equal(sanitizeOptions({ difficulty: 'dificil', seconds: 60 }, defaultOptions('sudoku-duelo')).difficulty, 'dificil');
 assert.equal(sanitizeOptions({ seconds: 60 }, defaultOptions('sudoku-duelo')).seconds, 600);
@@ -50,14 +59,16 @@ const mkRoom = (clock, extra = {}) => new Room('ABCD', { now: clock.now, setTime
   assert.equal(room.act(bia.id, { a: 'xpto' }).ok, false);
   const s = room.stateFor(bia.id);
   assert.deepEqual(s.play.myWords, [w2]);
-  assert.equal(s.players.find((p) => p.id === ana.id).roundLabel, '2 pal.');
+  assert.match(s.players.find((p) => p.id === ana.id).roundLabel, /· 2 pal./);
   assert.equal(JSON.stringify(s).includes(`"${w1}"`), false, 'não vaza palavras dos outros');
   clock.advance(60000);
   assert.ok(room.act(bia.id, { a: 'submit', word: words[2] }).ok, 'tolerância de rede');
   clock.advance(400);
   assert.equal(room.phase, 'reveal');
-  assert.equal(room.players.get(ana.id).total, wordPoints(w1));
-  assert.equal(room.players.get(bia.id).total, wordPoints(words[2]));
+  assert.equal(room.players.get(ana.id).total, wordPoints(w1) + wordPoints(w2), 'repetida também vale');
+  assert.equal(room.players.get(bia.id).total, wordPoints(w2) + wordPoints(words[2]));
+  assert.equal(room.rounds[0].players[ana.id].shared, 1);
+  assert.equal(room.rounds[0].totals.shared, 1);
   assert.equal(room.stateFor(ana.id).lastRound.type, 'grade');
   room.disconnect(ana.id);
   assert.equal(room.hostId, bia.id);
@@ -108,6 +119,32 @@ const mkRoom = (clock, extra = {}) => new Room('ABCD', { now: clock.now, setTime
   const mine = room.rounds[0].players[ana.id].words.find((w) => w.w === fake.w);
   assert.equal(mine.ai, true);
   assert.equal(room.players.get(ana.id).total, wordPoints(fake.w));
+}
+
+// ---------- Grade Bônus 6×6 ----------
+{
+  const clock = fakeClock();
+  const room = mkRoom(clock);
+  const ana = room.addPlayer({ name: 'Ana' });
+  room.setOptions(ana.id, { mode: 'grupo-bonus', size: 6, rounds: 1 });
+  room.start(ana.id);
+  clock.advance(3500);
+  assert.equal(room.rd.grid.length, 36);
+  assert.equal(Object.keys(room.rd.bonus).length, 4);
+  assert.deepEqual(room.stateFor(ana.id).play.bonus, room.rd.bonus);
+  // acha uma palavra que passa por uma casa bônus, se houver
+  const words = solve(room.rd.grid, 6);
+  const { findPath } = await import('../js/core/letters.js');
+  let pick = null;
+  for (const w of words) { const p = findPath(room.rd.grid, 6, w); if (p.some((i) => room.rd.bonus[i])) { pick = { w, p }; break; } }
+  if (pick) {
+    const r = room.act(ana.id, { a: 'submit', word: pick.w, path: pick.p });
+    assert.ok(r.ok);
+    assert.ok(r.mult > 1);
+    assert.equal(r.pts, wordPoints(pick.w) * r.mult);
+    clock.advance(120 * 1000 + 400);
+    assert.equal(room.players.get(ana.id).total, r.pts, 'bônus conta no total');
+  }
 }
 
 // ---------- Caça-Palavras Corrida ----------

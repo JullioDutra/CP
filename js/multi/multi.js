@@ -420,16 +420,17 @@ function gradePlay(s) {
   const wg = createWordGrid({
     size: s.play.size,
     letters: s.play.grid,
+    bonus: s.play.bonus || {},
     onSubmit: async (w, path) => {
       const slow = setTimeout(() => toast(root, `Verificando ${w.toUpperCase()} com IA…`), 400);
       const r = await net.act('submit', { word: w, path });
       clearTimeout(slow);
-      if (r.ok) toast(root, r.ai ? `✨ IA confirmou! +${r.pts}` : `+${r.pts}`, 'good');
+      if (r.ok) toast(root, `${r.ai ? '✨ IA confirmou! ' : ''}${r.mult > 1 ? `×${r.mult}! ` : ''}+${r.pts}`, 'good');
       else toast(root, r.reason, r.dup ? 'dup' : 'bad');
       return r;
     },
   });
-  const board = liveBoard(s, { hint: modeOf(s).sharedFactor === 0 ? 'Provisório: palavras repetidas serão anuladas no fim.' : null });
+  const board = liveBoard(s);
   const mine = h('ul', { class: 'found' });
   const myPts = h('strong', {}, '0');
   const myCount = h('h3', {}, 'Minhas palavras');
@@ -452,7 +453,8 @@ function gradePlay(s) {
 
 // ----- Grade (telão) -----
 function gradeTv(s) {
-  const tiles = h('div', { class: 'board tv-board', style: `--n:${s.play.size}` }, s.play.grid.map((l) => h('div', { class: 'tile' }, h('span', {}, l.toUpperCase()))));
+  const bonus = s.play.bonus || {};
+  const tiles = h('div', { class: 'board tv-board', style: `--n:${s.play.size}` }, s.play.grid.map((l, i) => h('div', { class: `tile ${bonus[i] ? 'has-bonus' : ''}` }, h('span', {}, l.toUpperCase()), bonus[i] ? h('em', { class: 'bonus' }, bonus[i]) : '')));
   const board = liveBoard(s);
   return {
     el: h('div', { class: 'playing' }, hudBar(s, h('div', { class: 'hud-item' }, h('span', {}, 'Possíveis'), h('strong', {}, s.play.possible))), h('div', { class: 'play-area' }, tiles, board.el)),
@@ -556,13 +558,13 @@ function resultsView(s) {
   let delay = 0;
   const stagger = () => `animation-delay:${Math.min((delay += 0.05), 4)}s`;
   const wordChip = (w) =>
-    h('span', { class: `wchip ${w.status}`, style: stagger(), title: w.status === 'cancelled' ? 'Anulada: outra pessoa também achou' : w.status === 'unique' ? 'Só esta pessoa achou' : 'Outras pessoas também acharam' },
-      w.w.toUpperCase(), w.ai ? ' ✨' : '', h('small', {}, w.status === 'cancelled' ? '0' : `+${w.pts}`));
+    h('span', { class: `wchip ${w.status}`, style: stagger(), title: w.status === 'unique' ? 'Só esta pessoa achou' : `${w.by} pessoas acharam` },
+      w.status === 'unique' ? '★ ' : '', w.w.toUpperCase(), w.ai ? ' ✨' : '', w.status === 'shared' ? h('span', { class: 'by-count', 'aria-label': `${w.by} pessoas` }, `👥${w.by}`) : '', h('small', {}, `+${w.pts}`));
 
   const detailFor = (id) => {
     const d = r.players?.[id];
     if (!d) return h('small', { class: 'muted' }, 'Entrou depois desta rodada');
-    if (r.type === 'grade') return d.words.length ? d.words.map(wordChip) : h('small', { class: 'muted' }, 'Nenhuma palavra');
+    if (r.type === 'grade') return d.words.length ? [tank(d.unique, d.shared, 'small'), ...d.words.map(wordChip)] : h('small', { class: 'muted' }, 'Nenhuma palavra');
     if (r.type === 'wordsearch') return d.found.length ? d.found.map((w) => h('span', { class: 'wchip mine', style: `${stagger()};--hue:${hueOf(id)}` }, w.toUpperCase())) : h('small', { class: 'muted' }, 'Nenhuma palavra');
     if (r.type === 'sudoku') {
       return h('small', {}, d.done ? `✅ Terminou em ${d.place}º · ${fmtTime(d.seconds)} · ${d.errors} erro(s)` : `Não terminou · ${d.filled}/${r.empty} números certos · ${d.errors} erro(s)`);
@@ -586,10 +588,12 @@ function resultsView(s) {
   let legend = '';
   if (r.type === 'grade') {
     legend = h('p', { class: 'legend' },
-      h('span', { class: 'wchip unique' }, 'só um achou'),
-      modeOf(s).sharedFactor === 0 ? h('span', { class: 'wchip cancelled' }, 'anulada (repetida)') : h('span', { class: 'wchip shared' }, 'repetida'),
-      h('span', { class: 'wchip' }, '✨ confirmada pela IA'));
+      h('span', { class: 'wchip unique' }, '★ única'),
+      h('span', { class: 'wchip shared' }, 'repetida ', h('span', { class: 'by-count' }, '👥2')),
+      h('span', { class: 'wchip' }, '✨ confirmada pela IA'),
+      h('span', { class: 'legend-note' }, 'Únicas e repetidas valem os mesmos pontos.'));
     extra = h('div', {},
+      r.totals ? h('div', { class: 'tank-box' }, h('h3', {}, 'Tanque da rodada'), tank(r.totals.unique, r.totals.shared, 'big'), h('p', { class: 'hint' }, `${r.totals.distinct} palavras diferentes achadas por todos`)) : '',
       r.longest ? h('p', { class: 'highlight' }, '📏 Maior palavra da rodada: ', h('strong', {}, r.longest.w.toUpperCase()), ` (${byId[r.longest.id]?.name || '—'})`) : '',
       r.missed?.length ? h('div', { class: 'missed' }, h('h4', {}, `Palavras que ninguém achou (${r.possible} possíveis na grade), as mais conhecidas primeiro:`), h('p', {}, r.missed.map((w) => w.toUpperCase()).join(' · '))) : '');
   } else if (r.type === 'wordsearch') {
@@ -634,4 +638,14 @@ function saveFinal(s, standings) {
   if (!mine || !p || mine.total <= 0) return;
   const pos = standings.indexOf(mine) + 1;
   addScore(`multi-${s.options.mode}`, { name: p.name, score: mine.total, detail: `${pos}º de ${standings.length} · sala ${s.code}` });
+}
+
+// "Tanque": barra cheia dividida entre palavras únicas e repetidas.
+function tank(unique, shared, size = 'small') {
+  const total = unique + shared || 1;
+  return h('div', { class: `tank ${size}`, role: 'img', 'aria-label': `${unique} únicas e ${shared} repetidas` },
+    h('div', { class: 'tank-bar' },
+      unique ? h('div', { class: 'tank-unique', style: `width:${(unique / total) * 100}%` }, size === 'big' ? `${unique}` : '') : '',
+      shared ? h('div', { class: 'tank-shared', style: `width:${(shared / total) * 100}%` }, size === 'big' ? `${shared}` : '') : ''),
+    h('div', { class: 'tank-label' }, h('span', { class: 'u' }, `★ ${unique} única${unique === 1 ? '' : 's'}`), h('span', { class: 's' }, `${shared} repetida${shared === 1 ? '' : 's'}`)));
 }
