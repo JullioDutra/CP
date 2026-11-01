@@ -12,12 +12,12 @@ import { RoomManager } from './rooms.js';
 import { createVerifier, loadDotEnv } from './ai.js';
 import { createStore } from './store.js';
 import { createApi } from './api.js';
+import { publicPath } from './static.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 loadDotEnv(path.join(ROOT, '.env'));
 const PORT = Number(process.env.PORT) || 8080;
 const DATA_DIR = process.env.TRAMA_DATA_DIR || path.join(ROOT, 'data', 'runtime');
-const PUBLIC = ['index.html', 'css/', 'js/', 'data/palavras.txt', 'data/comuns.txt', 'data/temas.js', 'manifest.webmanifest', 'sw.js', 'icon.svg'];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 
 const readList = (f) => readFileSync(path.join(ROOT, 'data', f), 'utf8').split('\n');
@@ -36,8 +36,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (url.pathname === '/healthz') { res.end('ok'); return; }
     if (url.pathname.startsWith('/api/')) { await api(req, res, url); return; }
-    let rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'index.html';
-    if (!PUBLIC.some((p) => rel === p || (p.endsWith('/') && rel.startsWith(p)))) rel = 'index.html';
+    const rel = publicPath(url.pathname);
     const file = path.join(ROOT, rel);
     if (!file.startsWith(ROOT + path.sep)) throw new Error('caminho inválido');
     if (!(await stat(file)).isFile()) throw new Error('não é arquivo');
