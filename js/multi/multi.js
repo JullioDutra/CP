@@ -1,6 +1,7 @@
 // Telas do multijogador: perfil (nome + avatar), saguão, rodada, revelação, pódio e Telão.
 import { h, fmtTime, toast } from '../core/ui.js';
 import { createWordGrid } from '../core/wordgrid.js';
+import { POINTS_HINT } from '../core/letters.js';
 import { AVATARS, MULTI_MODES, PLAYER_HUES, formatOption } from '../core/multimodes.js';
 import { getPlayerName, addScore } from '../core/ranking.js';
 import { getAvatar, saveIdentity, api } from '../core/profile.js';
@@ -8,6 +9,7 @@ import { play, muteButton } from '../core/sound.js';
 import { createNet } from './net.js';
 import { createWsBoard } from './wsboard.js';
 import { createSudokuDuel } from './sudokuduel.js';
+import { createReveal } from './reveal.js';
 
 const SESSION_KEY = 'trama.session';
 const DIFF = { facil: 'Fácil', medio: 'Médio', dificil: 'Difícil' };
@@ -109,8 +111,7 @@ function onMessage(msg) {
 function phaseSounds(prev, s) {
   if (prev?.phase === s.phase) return;
   if (s.phase === 'playing') play('go');
-  if (s.phase === 'reveal') play('end');
-  if (s.phase === 'final') play(s.standings[0]?.id === s.you || s.spectator ? 'win' : 'end');
+  // o som do fim da rodada toca no final da revelação animada
 }
 
 function leaveRoom() {
@@ -348,7 +349,7 @@ function lobbyView() {
             h('div', { class: 'mode-grid tight' }, modes.filter((m) => m.category === 'classico').map(modeCard)),
             h('p', { class: 'group-label novo' }, 'Novos · exclusivos Trama'),
             h('div', { class: 'mode-grid tight' }, modes.filter((m) => m.category === 'novo').map(modeCard)),
-            h('ul', { class: 'rules' }, mode.rules.map((r) => h('li', {}, r))),
+            h('ul', { class: 'rules' }, mode.rules.map((r) => h('li', {}, r)), mode.game === 'grade' ? h('li', {}, `Pontos: ${POINTS_HINT}`) : ''),
             Object.entries(mode.options).map(([k, spec]) => opt(k, spec)))),
         h('div', { class: 'row-actions center' },
           host
@@ -406,11 +407,11 @@ function countdownView(s) {
   };
 }
 
-function hudBar(s, third) {
+function hudBar(s, ...extra) {
   return h('div', { class: 'hud' },
-    h('div', { class: 'hud-item' }, h('span', {}, 'Tempo'), h('strong', { 'data-clock': 'time' }, '')),
+    h('div', { class: 'hud-item hud-time' }, h('span', {}, 'Tempo'), h('strong', { 'data-clock': 'time' }, '')),
     h('div', { class: 'hud-item' }, h('span', {}, 'Rodada'), h('strong', {}, `${s.round}/${s.options.rounds}`)),
-    third);
+    ...extra);
 }
 
 // ----- Grade (jogador) -----
@@ -428,22 +429,16 @@ function gradePlay(s) {
       return r;
     },
   });
-  const board = liveBoard(s);
-  const mine = h('ul', { class: 'found' });
   const myPts = h('strong', {}, '0');
-  const myCount = h('h3', {}, 'Minhas palavras');
+  const myCount = h('strong', {}, '0');
   const el = h('div', { class: 'playing' },
-    hudBar(s, h('div', { class: 'hud-item' }, h('span', {}, 'Meus pontos'), myPts)),
-    h('div', { class: 'play-area' }, wg.el, h('div', { class: 'side-col' }, board.el, h('div', { class: 'found-panel' }, myCount, mine))));
+    hudBar(s, h('div', { class: 'hud-item' }, h('span', {}, 'Pontos'), myPts), h('div', { class: 'hud-item' }, h('span', {}, 'Palavras'), myCount)),
+    h('div', { class: 'play-area' }, wg.el));
   return {
     el,
     update(st) {
-      board.update(st);
-      const words = st.play?.myWords || [];
-      const ai = new Set(st.play?.myAi || []);
       myPts.textContent = me()?.roundPoints ?? 0;
-      myCount.textContent = `Minhas palavras (${words.length})`;
-      mine.replaceChildren(...words.slice().reverse().map((w) => h('li', {}, w.toUpperCase(), ai.has(w) ? ' ✨' : '')));
+      myCount.textContent = st.play?.myWords?.length ?? 0;
     },
     destroy: () => wg.destroy(),
   };
@@ -479,7 +474,7 @@ function wsPlay(s, interactive) {
   const el = h('div', { class: 'playing' },
     hudBar(s, h('div', { class: 'hud-item' }, h('span', {}, interactive ? 'Meus pontos' : 'Achadas'), interactive ? myPts : h('strong', { class: 'ws-count' }, '0'))),
     h('h2', { class: 'theme-title' }, `Tema: ${s.play.theme}`),
-    h('div', { class: 'play-area' }, ws.el, h('div', { class: 'side-col' }, h('div', { class: 'found-panel' }, h('h3', {}, 'Palavras'), list), board.el)));
+    h('div', { class: 'play-area' }, ws.el, h('div', { class: 'side-col' }, h('div', { class: 'found-panel' }, h('h3', {}, 'Palavras'), list), interactive ? '' : board.el)));
   return {
     el,
     update(st) {
@@ -554,7 +549,7 @@ function resultsView(s) {
     : '';
 
   let delay = 0;
-  const stagger = () => `animation-delay:${Math.min((delay += 0.05), 4)}s`;
+  const stagger = () => `animation-delay:${Math.min((delay += 0.02), 0.8)}s`;
   const wordChip = (w) =>
     h('span', { class: `wchip ${w.status}`, style: stagger(), title: w.status === 'unique' ? 'Só esta pessoa achou' : `${w.by} pessoas acharam` },
       w.status === 'unique' ? '★ ' : '', w.w.toUpperCase(), w.ai ? ' ✨' : '', w.status === 'shared' ? h('span', { class: 'by-count', 'aria-label': `${w.by} pessoas` }, `👥${w.by}`) : '', h('small', {}, `+${w.pts}`));
@@ -601,20 +596,40 @@ function resultsView(s) {
     extra = h('p', { class: 'highlight' }, `Sudoku ${DIFF[r.difficulty]} · bônus de pódio: 1º +500 · 2º +250 · 3º +100`);
   }
 
-  const actions = h('div', { class: 'row-actions center' });
+  const actions = h('div', { class: 'row-actions center hidden' });
   const globalEl = h('div', { class: 'global-pos' });
-  if (final && !s.spectator) showGlobalPosition(s, globalEl);
+  const statsPanel = h('div', { class: 'stats-panel hidden' }, extra, legend, h('div', { class: 'result-list' }, rows));
+  const statsBtn = h('button', { class: 'btn ghost', onclick: () => {
+    const open = statsPanel.classList.toggle('hidden') === false;
+    statsBtn.textContent = open ? 'Fechar estatísticas' : '📊 Mais estatísticas';
+    if (open) statsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } }, '📊 Mais estatísticas');
+  const after = h('div', { class: 'after-reveal hidden' }, podium, globalEl, h('div', { class: 'row-actions center' }, statsBtn), statsPanel);
+
+  // 1º a animação; depois pódio, posição global, estatísticas e botões
+  const reveal = createReveal({
+    round: r,
+    players: s.players.filter((p) => r.scores && p.id in r.scores),
+    totals: Object.fromEntries(s.standings.map((x) => [x.id, x.total])),
+    you: s.you,
+    hueOf,
+    final,
+    onDone: () => {
+      after.classList.remove('hidden');
+      actions.classList.remove('hidden');
+      if (final && !s.spectator) showGlobalPosition(s, globalEl);
+    },
+  });
+
   const el = h('div', { class: 'results card' },
     h('h2', {}, final ? '🏆 Fim de jogo!' : `Fim da rodada ${s.round} de ${s.options.rounds}`),
-    podium,
-    globalEl,
-    extra,
-    legend,
-    h('div', { class: 'result-list' }, rows),
+    reveal.el,
+    after,
     actions);
 
   return {
     el,
+    destroy: () => reveal.destroy(),
     update(st) {
       if (st.spectator) {
         const hp = playerById(st.hostId);

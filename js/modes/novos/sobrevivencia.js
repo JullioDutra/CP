@@ -23,6 +23,7 @@ export default {
   name: 'Sobrevivência',
   icon: '⏳',
   tagline: 'Grade 5×5 viva · o tempo é sua vida',
+  scoring: true,
   rules: [
     `Você começa com ${START} segundos. Cada palavra devolve tempo (palavras maiores dão mais).`,
     'Quanto mais a partida dura, menos tempo cada palavra devolve.',
@@ -113,8 +114,8 @@ export default {
 
     root.append(
       top.el,
-      h('div', { class: 'play-area' }, wg.el, panel.el),
-      h('div', { class: 'row-actions' }, shuffleBtn, h('button', { class: 'btn ghost', onclick: finish }, 'Encerrar'))
+      h('div', { class: 'play-area' }, wg.el),
+      h('div', { class: 'row-actions center game-foot' }, shuffleBtn, h('button', { class: 'btn ghost small', onclick: finish }, 'Encerrar'))
     );
     return () => { timer.stop(); wg.destroy(); };
   },

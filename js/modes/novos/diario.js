@@ -25,6 +25,7 @@ export default {
   name: 'Desafio do Dia',
   icon: '📅',
   tagline: 'Mesma grade para todos · casas bônus · 2 min',
+  scoring: true,
   rules: [
     'Todo dia uma grade nova, igual para todos os jogadores.',
     'Casas ×2 e ×3 multiplicam os pontos da palavra que passar por elas (se passar pelas duas, ×6!).',
@@ -99,8 +100,8 @@ export default {
     root.append(
       top.el,
       practice ? h('p', { class: 'notice' }, prev ? `Você já jogou hoje (${prev.score} pts). Esta partida é só treino.` : 'Você já jogou o desafio de hoje. Esta partida é só treino.') : '',
-      h('div', { class: 'play-area' }, wg.el, panel.el),
-      h('div', { class: 'row-actions' }, h('button', { class: 'btn ghost', onclick: finish }, 'Encerrar partida'))
+      h('div', { class: 'play-area' }, wg.el),
+      h('div', { class: 'row-actions center game-foot' }, h('button', { class: 'btn ghost small', onclick: finish }, 'Encerrar'))
     );
     return () => { timer.stop(); wg.destroy(); };
   },

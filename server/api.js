@@ -66,7 +66,8 @@ export function createApi({ verifier, store, now = Date.now }) {
 
     // ---------- perfil sem login ----------
     'POST /api/perfil': async (req) => {
-      if (!allow(`perfil:${req.socket.remoteAddress}`, 10, 3600 * 1000)) return [429, { erro: 'Muitos perfis criados, tente mais tarde' }];
+      // numa festa, todos no mesmo Wi-Fi compartilham o IP: limite folgado
+      if (!allow(`perfil:${req.socket.remoteAddress}`, 40, 3600 * 1000)) return [429, { erro: 'Muitos perfis criados, tente mais tarde' }];
       const p = store.createProfile(cleanProfile(await body(req)));
       return [200, p];
     },

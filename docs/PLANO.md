@@ -24,6 +24,9 @@ sorteia a grade, controla o relógio, valida as palavras e guarda os rankings.
 - ✅ **Fase 3:** ranking global (por partida, por modo/variante, Hoje/Semana/Sempre, mais vitórias),
   perfis sem login (nome + avatar + código para levar a outro aparelho), estatísticas e histórico,
   partidas solo verificadas pelo servidor (Grade Relâmpago e Desafio do Dia).
+- ✅ **Ajustes pós-Fase 3:** tela da partida limpa (tempo em cima, grade quase em tela cheia, regras só no início) e
+  **revelação animada** do resultado (palavras da menor para a maior, barras subindo, suspense, contagem de palavras,
+  botão "Mais estatísticas").
 - ⏭️ Próximo: **Fase 4** (Arena Pública, ligas e temporadas, Arena Sobrevivência e Times).
 
 ---

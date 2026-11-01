@@ -517,3 +517,83 @@ code.secret { font-family: ui-monospace, monospace; padding: 6px 10px; border-ra
   .recent li { grid-template-columns: 1fr auto; }
   .seg-btn { padding: 8px 12px; }
 }
+
+/* ---------- Tela da partida: limpa, grade ocupando quase a tela toda ---------- */
+#app:has(.game), #app:has(.room .playing) { max-width: none; padding: 8px 10px 12px; }
+.game .topbar, .room .playing ~ * , .room-top { margin-bottom: 8px; }
+.game .hud, .playing .hud { margin-bottom: 6px; gap: 6px; }
+.game .hud-item, .playing .hud-item { padding: 4px 12px; min-width: 70px; border-radius: 14px; }
+.game .hud-item strong, .playing .hud-item strong { font-size: 1.15rem; }
+.hud .hud-time { order: -1; flex-basis: 100%; background: none; box-shadow: none; padding: 0; }
+.hud .hud-time span { display: none; }
+.hud .hud-time strong { font-size: clamp(2rem, 7vw, 2.8rem); font-weight: 900; letter-spacing: 0.02em; }
+.hud.danger .hud-time { background: none; color: var(--bad); }
+.hud.danger .hud-time span { color: var(--bad); }
+.game .wordgrid, .playing .wordgrid { gap: 8px; }
+.game .current-word, .playing .current-word { min-height: 2.3rem; font-size: 1.35rem; padding: 2px 18px; }
+.board.fill {
+  --size: min(calc(100vw - 20px), calc(100dvh - 312px), 760px);
+  --gap: calc(var(--size) / var(--n) * 0.1);
+}
+.board.fill .tile { border-radius: calc(var(--size) / var(--n) * 0.2); }
+.game-foot { margin-top: 8px; }
+.points-table { background: var(--primary-soft); color: var(--primary-strong); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 0.9rem; }
+@media (min-width: 900px) { .board.fill { --size: min(calc(100vw - 40px), calc(100dvh - 330px), 760px); } }
+.room:has(.playing) .room-code-small, .room:has(.playing) .room-top a.btn { display: none; }
+.room-top { flex-wrap: nowrap; }
+.room-top > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.room-top .mute { margin-left: auto; }
+.room-code-small + a + .mute, .room-code-small ~ .mute { margin-left: 0; }
+
+/* ---------- Revelação animada do fim da rodada ---------- */
+.hidden { display: none !important; }
+.reveal { display: flex; flex-direction: column; gap: 14px; margin: 6px 0 10px; }
+.reveal-card {
+  min-height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  border-radius: 22px; background: var(--surface-2); padding: 10px 16px; text-align: center;
+}
+.reveal-card .rc-word { font-size: clamp(1.6rem, 6vw, 2.4rem); font-weight: 900; letter-spacing: 0.08em; line-height: 1.1; overflow-wrap: anywhere; }
+.reveal-card .rc-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.reveal-card .rc-pts { font-size: 1.1rem; font-weight: 900; color: var(--good-text); }
+.reveal-card .rc-who { display: inline-flex; gap: 4px; }
+.rc-av { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; background: hsl(var(--hue) 75% 75% / 0.5); }
+.reveal-card.pop { animation: card-pop 0.35s ease-out; }
+.reveal-card.big { background: linear-gradient(135deg, var(--primary-soft), var(--teal-soft)); }
+.reveal-card.big .rc-word { font-size: clamp(2rem, 8vw, 3rem); color: var(--primary-strong); }
+.reveal-card.big .rc-pts { font-size: 1.4rem; }
+.reveal-card.suspense { animation: suspense 0.6s ease-in-out infinite alternate; }
+.reveal-card.suspense .rc-word { color: var(--muted); letter-spacing: 0.3em; }
+.reveal-card.done { background: linear-gradient(135deg, #fff1c2, #ffe39a); color: #4a3800; }
+.reveal-card.done .rc-pts { color: #6b5100; }
+.reveal-card.idle .rc-word { font-size: 1.3rem; color: var(--muted); letter-spacing: 0.02em; }
+@keyframes card-pop { 0% { transform: scale(0.85); opacity: 0.3; } 70% { transform: scale(1.04); } 100% { transform: scale(1); opacity: 1; } }
+@keyframes suspense { from { transform: scale(0.98); } to { transform: scale(1.02); box-shadow: 0 0 0 6px var(--primary-soft); } }
+
+.race { position: relative; }
+.race-row2 {
+  position: absolute; left: 0; right: 0; top: 0; height: 52px;
+  display: grid; grid-template-columns: 2.2rem 2.4rem 1fr auto; align-items: center; gap: 8px;
+  padding: 0 12px; border-radius: 16px; background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.race-row2.me { box-shadow: inset 0 0 0 2px var(--primary); }
+.race-row2.flash { animation: row-flash 0.5s ease-out; }
+.race-row2.leader { background: linear-gradient(90deg, #fff6d6, var(--surface)); box-shadow: inset 0 0 0 2px #f2c14e; }
+@media (prefers-color-scheme: dark) { .race-row2.leader { background: linear-gradient(90deg, #4a3d14, var(--surface)); } .reveal-card.done { background: linear-gradient(135deg, #4a3d14, #3a3010); color: #ffe39a; } .reveal-card.done .rc-pts { color: #ffd76a; } }
+@keyframes row-flash { 0% { background: var(--good-soft); } 100% { background: var(--surface); } }
+.race-pos { font-weight: 900; color: var(--muted); }
+.race-avatar { display: grid; place-items: center; width: 2.3rem; height: 2.3rem; border-radius: 50%; font-size: 1.3rem; background: hsl(var(--hue) 75% 75% / 0.45); }
+.race-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.race-name { display: flex; justify-content: space-between; gap: 8px; font-weight: 800; font-size: 0.92rem; }
+.race-name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.race-words { color: var(--muted); font-weight: 700; font-size: 0.8rem; white-space: nowrap; }
+.race-track2 { height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.race-bar { height: 100%; width: 2%; border-radius: 999px; background: hsl(var(--hue) 65% 60%); transition: width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.race-score { font-size: 1.3rem; font-weight: 900; font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+.reveal-progress { height: 4px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.reveal-progress .rp-fill { height: 100%; width: 0; background: var(--primary); transition: width 0.3s; }
+.after-reveal { animation: pop 0.4s ease-out; }
+.stats-panel { margin-top: 8px; }
+.room.tv .reveal-card .rc-word { font-size: clamp(2.4rem, 5vw, 4rem); }
+.room.tv .race-row2 { height: 52px; }

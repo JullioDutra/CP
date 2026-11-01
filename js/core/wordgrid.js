@@ -1,6 +1,6 @@
 // Componente de grade de letras: arrastar, tocar peça por peça ou digitar no teclado.
 import { h } from './ui.js';
-import { isAdjacent, findPath, POINTS_HINT } from './letters.js';
+import { isAdjacent, findPath } from './letters.js';
 import { play } from './sound.js';
 
 export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
@@ -11,7 +11,7 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
   let typed = '';
 
   const current = h('div', { class: 'current-word' }, ' ');
-  const board = h('div', { class: 'board', style: `--n:${size}` });
+  const board = h('div', { class: 'board fill', style: `--n:${size}` });
   const tiles = [];
 
   function renderTiles() {
@@ -153,7 +153,7 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
   renderTiles();
 
   return {
-    el: h('div', { class: 'wordgrid' }, current, board, actions, h('p', { class: 'points-hint' }, 'Pontos: ' + POINTS_HINT)),
+    el: h('div', { class: 'wordgrid' }, current, board, actions),
     get letters() { return grid; },
     setLetters(next, changed = []) {
       grid = next.slice();

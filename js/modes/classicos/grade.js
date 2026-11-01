@@ -19,10 +19,10 @@ export default {
   globalRanking: true,
   // pede a grade ao servidor para a partida valer no ranking global
   prepare: (opts) => startOnline('classico-grade', { variante: opts.size || '4' }),
+  scoring: true,
   rules: [
     'Ligue letras vizinhas (horizontal, vertical ou diagonal) para formar palavras de 3+ letras.',
     'Cada peça só pode ser usada uma vez por palavra.',
-    'Pontos (mínimo 3 letras): 3 = 1 · 4 = 2 · 5 = 4 · 6 = 7 · 7 = 11 · 8 = 16 · 9 = 22 · cada letra a mais +7.',
     'Arraste o dedo/mouse, toque peça por peça ou digite no teclado e aperte Enter.',
   ],
   start(root, api, opts = {}) {
@@ -82,8 +82,8 @@ export default {
 
     root.append(
       top.el,
-      h('div', { class: 'play-area' }, wg.el, panel.el),
-      h('div', { class: 'row-actions' }, h('button', { class: 'btn ghost', onclick: finish }, 'Encerrar partida'))
+      h('div', { class: 'play-area' }, wg.el),
+      h('div', { class: 'row-actions center game-foot' }, h('button', { class: 'btn ghost small', onclick: finish }, 'Encerrar'))
     );
     return () => { timer.stop(); wg.destroy(); };
   },

@@ -10,6 +10,7 @@ import sobrevivencia from './modes/novos/sobrevivencia.js';
 import diario from './modes/novos/diario.js';
 import { initMulti, openMulti, openTv, roomCodeFromUrl, tvFromUrl, multiRankingModes } from './multi/multi.js';
 import { muteButton } from './core/sound.js';
+import { POINTS_HINT } from './core/letters.js';
 import { showRanking as showRankingScreen, showProfile } from './screens/global.js';
 import { saveIdentity, localProfile, getAvatar, serverStatus } from './core/profile.js';
 import { finishOnline } from './core/online-solo.js';
@@ -122,6 +123,7 @@ function showIntro(m) {
       h('p', { class: 'badge ' + m.category }, m.category === 'classico' ? 'Modo clássico' : 'Modo novo'),
       h('ul', { class: 'rules' }, m.rules.map((r) => h('li', {}, r))),
       optEl,
+      m.scoring ? h('p', { class: 'points-table' }, h('strong', {}, 'Pontos por palavra: '), POINTS_HINT) : '',
       m.globalRanking ? h('p', { class: 'hint center' }, '🌍 Este modo vale para o ranking global (com o servidor ligado).') : '',
       h(
         'div',

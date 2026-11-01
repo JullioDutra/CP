@@ -63,7 +63,10 @@ npm run verificar -- --temas
    Os outros marcam **Estou pronto!**.
 3. Contagem 3-2-1, e todos recebem a **mesma grade** com o **mesmo relógio** (controlado pelo servidor).
 4. Durante a rodada, o **placar ao vivo** mostra os pontos e a quantidade de palavras de cada um, sem mostrar quais palavras foram achadas.
-5. No fim de cada rodada vem a **revelação**: as palavras de todos aparecem (★ únicas em verde, repetidas em azul com
+5. No fim de cada rodada vem a **revelação animada**: as palavras de todos aparecem uma a uma, **da menor para a maior**,
+   e as barras de cada jogador sobem e trocam de lugar conforme os pontos entram (começa rápido e vai desacelerando, com
+   suspense nas maiores palavras). Cada linha mostra **quantas palavras** a pessoa fez. Dá para **pular**. Ao terminar, aparece
+   o botão **📊 Mais estatísticas** com os detalhes: as palavras de todos aparecem (★ únicas em verde, repetidas em azul com
    👥 quantas pessoas acharam), o **tanque** mostra quantas foram únicas e quantas repetidas, além da maior palavra e das
    palavras que ninguém achou. **Ser única ou repetida não muda os pontos**: todo mundo que achou ganha.
 6. Depois da última rodada aparece o **pódio** 🥇🥈🥉, e o anfitrião pode iniciar a **Revanche**.
@@ -132,6 +135,10 @@ Tema claro e suave, pensado a partir de boas práticas para jogos de quebra-cabe
 - estados nunca só por cor: ★ para única, 👥 para repetida, ✨ para IA, animação para erro;
 - peças da grade menores e com mais espaço entre elas; fonte arredondada (Nunito);
 - modo escuro automático e respeito a "reduzir movimento" do sistema.
+
+## Tela da partida
+Limpa de propósito: só o **tempo em cima**, pontos/palavras, a palavra que está sendo formada e a **grade ocupando quase a
+tela inteira** (margem pequena). Regras e tabela de pontos aparecem só **antes** de começar (apresentação do modo e saguão).
 
 ## Controles
 - **Arrastar** pelas letras (mouse ou dedo) e soltar envia a palavra.

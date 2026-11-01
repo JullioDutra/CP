@@ -67,7 +67,7 @@ export function hud(items) {
     { class: 'hud' },
     items.map(([key, label]) => {
       values[key] = h('strong', {}, '—');
-      return h('div', { class: 'hud-item' }, h('span', {}, label), values[key]);
+      return h('div', { class: `hud-item hud-${key}` }, h('span', {}, label), values[key]);
     })
   );
   return { el, set: (key, v) => (values[key].textContent = v) };
