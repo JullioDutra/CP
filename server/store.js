@@ -265,9 +265,9 @@ export function createStore(file = ':memory:', { now = Date.now } = {}) {
     ticketsSince(profileId, since) {
       return q.recentTickets.get(profileId, since).n;
     },
-    takeTicket(id) {
+    takeTicket(id, profileId) {
       const t = q.getTicket.get(id);
-      if (!t) return null;
+      if (!t || (profileId && t.profile_id !== profileId)) return null;
       const r = q.useTicket.run(id);
       if (r.changes !== 1) return { ...t, data: JSON.parse(t.data), alreadyUsed: true };
       return { ...t, data: JSON.parse(t.data) };

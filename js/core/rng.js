@@ -11,6 +11,7 @@ export function createRng(seed = Date.now()) {
   };
   return {
     next,
+    getState: () => a,
     int: (max) => Math.floor(next() * max),
     pick: (arr) => arr[Math.floor(next() * arr.length)],
     shuffle(arr) {

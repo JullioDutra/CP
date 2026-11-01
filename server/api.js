@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 // Rotas HTTP /api/* — IA de palavras, QR code, perfis, ranking global e partidas solo verificadas.
 import QRCode from 'qrcode';
 import { AVATARS, MULTI_MODES } from '../js/core/multimodes.js';
@@ -43,17 +44,17 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
     try { return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { throw Object.assign(new Error('JSON inválido'), { status: 400 }); }
   }
 
-  const profileOf = (req) => store.profileByToken(req.headers['x-trama-perfil']);
+  const profileOf = async (req) => (await store.profileByToken(req.headers['x-trama-perfil']));
   const cleanProfile = (b) => ({ name: cleanName(b.name), avatar: AVATARS.includes(b.avatar) ? b.avatar : AVATARS[0] });
 
-  function positions(mode, variant, profileId) {
-    return Object.fromEntries(PERIODS.map((period) => [period, store.positionOf({ mode, variant, period, profileId })?.pos ?? null]));
+  async function positions(mode, variant, profileId) {
+    return Object.fromEntries(await Promise.all(PERIODS.map(async (period) => [period, (await store.positionOf({ mode, variant, period, profileId }))?.pos ?? null])));
   }
 
   const routes = {
-    'GET /api/status': () => [200, { ia: verifier.enabled, modelo: verifier.enabled ? verifier.model : null, ranking: true }],
+    'GET /api/status': async () => [200, { ia: verifier.enabled, modelo: verifier.enabled ? verifier.model : null, ranking: true }],
 
-    'GET /api/aprendidas': (req, res) => {
+    'GET /api/aprendidas': async (req, res) => {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache' });
       res.end(verifier.learned().join('\n'));
     },
@@ -69,61 +70,61 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
     'POST /api/perfil': async (req) => {
       // numa festa, todos no mesmo Wi-Fi compartilham o IP: limite folgado
       if (!allow(`perfil:${req.socket.remoteAddress}`, 40, 3600 * 1000)) return [429, { erro: 'Muitos perfis criados, tente mais tarde' }];
-      const p = store.createProfile(cleanProfile(await body(req)));
+      const p = (await store.createProfile(cleanProfile(await body(req))));
       return [200, p];
     },
-    'GET /api/perfil': (req) => {
-      const p = profileOf(req);
+    'GET /api/perfil': async (req) => {
+      const p = (await profileOf(req));
       if (!p) return [404, { erro: 'Perfil não encontrado' }];
-      return [200, { perfil: p, stats: store.profileStats(p.id) }];
+      return [200, { perfil: p, stats: (await store.profileStats(p.id)) }];
     },
     'PATCH /api/perfil': async (req) => {
-      const p = profileOf(req);
+      const p = (await profileOf(req));
       if (!p) return [404, { erro: 'Perfil não encontrado' }];
-      return [200, { perfil: store.updateProfile(p.id, cleanProfile(await body(req))) }];
+      return [200, { perfil: (await store.updateProfile(p.id, cleanProfile(await body(req)))) }];
     },
 
     // ---------- ranking ----------
-    'GET /api/ranking': (req, res, url) => {
+    'GET /api/ranking': async (req, res, url) => {
       const mode = url.searchParams.get('modo');
       if (!RANKED_MODES.has(mode)) return [400, { erro: 'Modo inválido' }];
       const variant = url.searchParams.get('variante') || null;
       const period = PERIODS.includes(url.searchParams.get('periodo')) ? url.searchParams.get('periodo') : 'semana';
-      const rows = store.leaderboard({ mode, variant, period, limit: 20 });
-      const me = profileOf(req);
-      const voce = me ? store.positionOf({ mode, variant, period, profileId: me.id }) : null;
+      const rows = (await store.leaderboard({ mode, variant, period, limit: 20 }));
+      const me = (await profileOf(req));
+      const voce = me ? (await store.positionOf({ mode, variant, period, profileId: me.id })) : null;
       return [200, { rows, voce }];
     },
     // ---------- ligas (temporada do mês) ----------
-    'GET /api/ligas': (req) => {
-      const me = profileOf(req);
+    'GET /api/ligas': async (req) => {
+      const me = (await profileOf(req));
       const season = seasonOf(now());
-      return [200, { temporada: season, rows: store.leagueTable({ season, limit: 30 }), voce: me ? store.ratingOf(me.id, season) : null }];
+      return [200, { temporada: season, rows: (await store.leagueTable({ season, limit: 30 })), voce: me ? (await store.ratingOf(me.id, season)) : null }];
     },
 
     // ---------- Arena Pública ----------
-    'GET /api/arena': () => [200, arenaStatus()],
+    'GET /api/arena': async () => [200, (await arenaStatus())],
 
     // ---------- denúncia de jogador ----------
     'POST /api/denuncia': async (req) => {
-      const me = profileOf(req);
+      const me = (await profileOf(req));
       if (!allow(`denuncia:${req.socket.remoteAddress}`, 10, 3600 * 1000)) return [429, { erro: 'Muitas denúncias, tente mais tarde' }];
       const b = await body(req);
       if (!b.nome) return [400, { erro: 'Quem você quer denunciar?' }];
-      store.report({ reporterId: me?.id, reportedId: null, reportedName: b.nome, room: b.sala, reason: b.motivo });
+      (await store.report({ reporterId: me?.id, reportedId: null, reportedName: b.nome, room: b.sala, reason: b.motivo }));
       return [200, { ok: true }];
     },
 
-    'GET /api/vencedores': (req, res, url) => {
+    'GET /api/vencedores': async (req, res, url) => {
       const period = PERIODS.includes(url.searchParams.get('periodo')) ? url.searchParams.get('periodo') : 'semana';
-      return [200, { rows: store.winners({ period, limit: 10 }) }];
+      return [200, { rows: (await store.winners({ period, limit: 10 })) }];
     },
 
     // ---------- partidas solo verificadas ----------
     'POST /api/solo/inicio': async (req) => {
-      const p = profileOf(req);
+      const p = (await profileOf(req));
       if (!p) return [401, { erro: 'Crie um perfil para entrar no ranking' }];
-      if (store.ticketsSince(p.id, now() - 3600 * 1000) >= 60) return [429, { erro: 'Muitas partidas seguidas, descanse um pouco' }];
+      if ((await store.ticketsSince(p.id, now() - 3600 * 1000)) >= 60) return [429, { erro: 'Muitas partidas seguidas, descanse um pouco' }];
       const b = await body(req);
       const cfg = SOLO_RANKED[b.modo];
       if (!cfg) return [400, { erro: 'Modo sem ranking global' }];
@@ -134,22 +135,22 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
         if (/^\d{4}-\d{2}-\d{2}$/.test(b.dia || '') && Math.abs(Date.parse(b.dia) - Date.parse(variant)) <= 86400000) variant = b.dia;
         const { grid, bonus } = dailyPuzzle(variant);
         data = { grid, size: 4, bonus };
-        ranked = !store.hasRankedTicket({ profileId: p.id, mode: b.modo, variant });
+        ranked = !(await store.hasRankedTicket({ profileId: p.id, mode: b.modo, variant }));
       } else {
         variant = cfg.variants.includes(String(b.variante)) ? String(b.variante) : cfg.variants[0];
         const size = Number(variant);
         const { grid } = makeGrid(createRng(), size, { minWords: MIN_WORDS[size], tries: size === 6 ? 25 : 60 });
         data = { grid, size, bonus: {} };
       }
-      const ticket = store.createTicket({ profileId: p.id, mode: b.modo, variant, data, duration: cfg.duration, ranked });
+      const ticket = (await store.createTicket({ profileId: p.id, mode: b.modo, variant, data, duration: cfg.duration, ranked }));
       return [200, { ticket, ...data, variante: variant, duracao: cfg.duration, ranked }];
     },
 
     'POST /api/solo/fim': async (req) => {
-      const p = profileOf(req);
+      const p = (await profileOf(req));
       if (!p) return [401, { erro: 'Perfil não encontrado' }];
       const b = await body(req);
-      const t = store.takeTicket(String(b.ticket || ''));
+      const t = (await store.takeTicket(String(b.ticket || ''), p.id));
       if (!t || t.profile_id !== p.id) return [404, { erro: 'Partida não encontrada' }];
       if (t.alreadyUsed) return [409, { erro: 'Essa partida já foi enviada' }];
       const elapsed = now() - t.started_at;
@@ -158,14 +159,14 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
       const r = scoreWords(t.data, words);
       let conquistas = [];
       if (t.ranked && r.score > 0) {
-        conquistas = store.recordMatch({
+        conquistas = (await store.recordMatch({
           mode: t.mode, variant: t.variant, kind: 'solo',
           players: [{ profileId: p.id, name: p.name, avatar: p.avatar, score: r.score, place: 1, words: r.accepted.length, unique: 0, longest: r.longest }],
-        }).achievements[p.id] || [];
+        })).achievements[p.id] || [];
       }
       return [200, {
         ok: true, ranked: !!t.ranked, score: r.score, conquistas, palavras: r.accepted.length, recusadas: r.rejected,
-        posicao: t.ranked && r.score > 0 ? positions(t.mode, t.variant, p.id) : null,
+        posicao: t.ranked && r.score > 0 ? (await positions(t.mode, t.variant, p.id)) : null,
       }];
     },
   };

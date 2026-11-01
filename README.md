@@ -204,9 +204,28 @@ Crie um arquivo em `js/modes/classicos/` ou `js/modes/novos/` exportando
 ## Testar o MVP
 Roteiro passo a passo em [`docs/TESTE-MVP.md`](docs/TESTE-MVP.md).
 
-## Hospedagem (fica para o fim)
-A ideia é usar a **Vercel**. Atenção: as funções da Vercel **não mantêm conexões WebSocket
-abertas**, então o tempo real precisa de um destes caminhos (detalhes em `docs/PLANO.md`):
-- jogo na Vercel + `server/` num serviço que aceite WebSocket (Render, Railway, Fly.io),
-  configurando `window.TRAMA_WS_URL`; ou
-- jogo na Vercel + um serviço de tempo real (Ably, Pusher ou Supabase Realtime).
+## Hospedagem: Vercel + Supabase
+
+A publicação usa Node 24 na Vercel (`api/server.js`), com arquivos públicos preparados por `npm run build`.
+O servidor mantém o protocolo WebSocket do jogo e chama a função `trama-backend` do Supabase.
+Perfis, partidas, rankings, ligas, conquistas e tickets ficam no PostgreSQL, no schema privado `trama`.
+As salas também ficam no banco: cada comando restaura o estado, valida a jogada e salva tudo em uma transação.
+As conexões recarregam o estado a cada segundo e retomam a sala com o código e token do jogador após reconexões.
+Salas inativas por mais de 24 horas expiram; resultados e perfis permanecem.
+
+- Projeto Supabase: `trama-cp` (São Paulo), organização Cadrius.
+- `deployment/schema.sql`: estrutura do banco. RLS fica ativada sem políticas públicas por intenção: o navegador não acessa essas tabelas.
+- `deployment/edge.ts`: função com conexão PostgreSQL, autenticação de servidor e transações.
+- `deployment/dictionary.js`: cópia compactada dos dicionários, incluída na função para não depender de downloads no início de uma partida.
+- Vercel: `TRAMA_BACKEND_URL` e `TRAMA_BACKEND_SECRET` são variáveis somente do servidor.
+  O banco guarda apenas SHA-256 do segredo em `trama.backend_keys`. Nenhuma chave privilegiada vai para o navegador ou GitHub.
+- A função faz autenticação própria via `x-trama-backend`; por isso o JWT do gateway é desativado.
+- Alterações no frontend publicam pelo GitHub/Vercel. Mudanças na função e seus módulos precisam de novo deploy da Edge Function.
+- A validação por IA é opcional e permanece desligada; os dicionários completos continuam funcionando.
+- O modo local (`npm start`) continua usando SQLite e o servidor WebSocket original.
+
+### Verificação
+
+`npm test` testa a lógica original e a restauração durável de salas, relógios, credenciais e gravação única do resultado.
+Antes de publicar mudanças, confira também `/api/status`, criação/consulta de perfil, uma partida solo com resultado,
+e dois jogadores na mesma sala (incluindo reconexão e pódio).
