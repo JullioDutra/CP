@@ -31,7 +31,12 @@ sorteia a grade, controla o relógio, valida as palavras e guarda os rankings.
   Arena Sobrevivência, Times (🔴 × 🔵), denúncia de jogador.
 - ✅ **Fase 5:** conquistas (12), sequência de dias 🔥 no Desafio do Dia, reações com emoji, temas desbloqueáveis,
   PWA (instalar no celular + modos solo offline), revelação animada também no solo.
-- ⏭️ Próximo: testar o MVP com pessoas de verdade e hospedar (seção 8).
+- ✅ **Hospedagem:** Vercel (site + servidor) + Supabase (Postgres), salas duráveis.
+- ✅ **Ajustes de novembro/2026:** Caça-Palavras **🎲 Mistura** (sem tema, palavras de todo tipo cruzadas e dobrando
+  na horizontal + vertical, palavras extras valem pontos); arrasto mais livre na grade; **novo tema Claro** (padrão);
+  a partida não mostra mais quantas palavras existem; verificação da IA silenciosa (palavra inválida só fica vermelha);
+  convite com **link da sala** (WhatsApp, enviar, copiar, QR).
+- ⏭️ Próximo: seção 9 (melhorias).
 
 ---
 
@@ -238,3 +243,43 @@ Há duas saídas:
    com o estado no banco. Dá mais trabalho e muda o motor de salas.
 
 Em qualquer caso, o ranking global (fase 3) pode usar o Postgres da Vercel ou do Supabase/Neon.
+
+
+---
+
+## 9. Próximas melhorias (plano)
+
+Em ordem de impacto para deixar o jogo mais divertido e fácil de espalhar.
+
+### 9.1 Convite e entrada na sala (prioridade alta)
+- ✅ Botão **Enviar no WhatsApp**, **Enviar link** (menu do celular), **Copiar link** e **QR code** no saguão.
+- Prévia bonita do link (Open Graph): ao colar no WhatsApp aparece "Sala ABCD · Grade em Grupo · 3 jogadores".
+  Precisa de uma rota `/s/ABCD` que devolve as meta tags e redireciona para `/?sala=ABCD`.
+- Entrar pelo link sem digitar nada: se o perfil já existe, entra direto; se não, só pede o nome (avatar sorteado).
+- **Convidar no meio do jogo:** botão "Chamar mais gente" na tela de resultado e entre rodadas.
+- Link de **revanche** que leva todo mundo para uma sala nova com as mesmas opções.
+
+### 9.2 Partida mais dinâmica
+- **Mistura em grupo com dicas:** a cada 30 s uma palavra da lista acende a primeira letra.
+- **Combo:** palavras seguidas em menos de 8 s dão um multiplicador visual (×1,2, ×1,5) — só no modo novo, nunca no clássico.
+- **Grade que gira** (botão ↻) para enxergar novas palavras sem mudar as letras.
+- **Modo Relâmpago 60 s** com grade 5×5 rica em vogais, para partidas rápidas no celular.
+- Caça-palavras com **tamanho de grade** (10×10 fácil, 12×12, 15×15 difícil) e quantidade de palavras.
+
+### 9.3 Visual e sensação
+- Tema Claro como padrão (✅); revisar contraste de todos os estados com o validador.
+- Animação curta do traço sobre as letras ao arrastar (linha ligando as peças).
+- Vibração leve no celular ao acertar/errar (com opção de desligar).
+- Modo daltônico: além da cor, símbolos nos estados (✓, ✕, ↺) — já existe em parte.
+
+### 9.4 Competição e retenção
+- **Desafio do Dia de caça-palavras Mistura** (mesma grade para todos, ranking diário).
+- Ranking entre amigos: "grupo" salvo com os perfis que jogaram juntos, com placar acumulado da semana.
+- Notificação (PWA) do Desafio do Dia, opcional.
+- Temporadas com recompensa visual (moldura do avatar) para os 10 primeiros da liga.
+
+### 9.5 Servidor e qualidade
+- Modo rápido de hospedagem ligado (`SUPABASE_DB_URL` na Vercel) para cortar a espera de ~1 s por ação.
+- Trocar a consulta a cada 1 s por **Supabase Realtime** (menos chamadas, resposta instantânea).
+- Testes de interface no navegador (Playwright) rodando a cada envio.
+- Painel simples de saúde: salas ativas, partidas por dia, erros.

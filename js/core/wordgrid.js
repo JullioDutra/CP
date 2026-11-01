@@ -63,18 +63,35 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
     });
   }
 
+  // Peça sob o ponto, pela geometria do tabuleiro (funciona também nos espaços entre peças).
+  // Vizinha reta (horizontal/vertical) aceita quase a peça toda; diagonal exige chegar
+  // mais perto do centro, para não pegar a peça do lado sem querer.
   function tileAt(x, y) {
-    const el = document.elementFromPoint(x, y)?.closest?.('.tile');
-    if (!el || !board.contains(el)) return null;
-    // Só conta perto do centro da peça, para diagonais funcionarem bem.
-    const r = el.getBoundingClientRect();
-    const dx = x - (r.left + r.width / 2), dy = y - (r.top + r.height / 2);
-    if (Math.hypot(dx, dy) > r.width * 0.42) return null;
-    return Number(el.dataset.i);
+    const a = tiles[0]?.getBoundingClientRect(), b = tiles[tiles.length - 1]?.getBoundingClientRect();
+    if (!a || !b) return null;
+    const cw = (b.right - a.left) / size, ch = (b.bottom - a.top) / size;
+    const fx = (x - a.left) / cw, fy = (y - a.top) / ch;
+    const c = Math.floor(fx), r = Math.floor(fy);
+    if (c < 0 || r < 0 || c >= size || r >= size) return null;
+    const i = r * size + c;
+    const last = path[path.length - 1];
+    const diag = last != null && Math.floor(last / size) !== r && last % size !== c;
+    const limit = last == null ? 0.5 : diag ? 0.4 : 0.52;
+    return Math.hypot(fx - c - 0.5, fy - r - 0.5) <= limit ? i : null;
+  }
+
+  // Arrasto rápido: passa por pontos intermediários para não pular peças.
+  let lastPt = null;
+  function dragTo(x, y) {
+    const [x0, y0] = lastPt || [x, y];
+    const step = Math.max(4, (tiles[0]?.getBoundingClientRect().width || 40) / 4);
+    const n = Math.max(1, Math.ceil(Math.hypot(x - x0, y - y0) / step));
+    for (let k = 1; k <= n; k++) extend(tileAt(x0 + ((x - x0) * k) / n, y0 + ((y - y0) * k) / n));
+    lastPt = [x, y];
   }
 
   function extend(i) {
-    if (i == null) return;
+    if (i == null || i === path[path.length - 1]) return;
     typed = '';
     const last = path[path.length - 1];
     if (path.length >= 2 && path[path.length - 2] === i) {
@@ -92,6 +109,7 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
     e.preventDefault();
     board.setPointerCapture?.(e.pointerId);
     dragging = true;
+    lastPt = [e.clientX, e.clientY];
     movedInGesture = false;
     const last = path[path.length - 1];
     if (i === last && path.length > 0) {
@@ -106,7 +124,7 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
   });
   board.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    extend(tileAt(e.clientX, e.clientY));
+    dragTo(e.clientX, e.clientY);
   });
   const end = () => {
     if (!dragging) return;

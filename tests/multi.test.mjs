@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { loadTestDict, fakeClock, fakeLlmFetch } from './helpers.mjs';
 import { wordPoints, solve } from '../js/core/letters.js';
-import { isWord } from '../js/core/dict.js';
+import { isWord, isCommon } from '../js/core/dict.js';
 import { scoreRound, sanitizeOptions, defaultOptions, sudokuDuelScore, bonusCells, bonusMultiplier } from '../js/core/multimodes.js';
 import { createRng } from '../js/core/rng.js';
 import { Room, cleanName } from '../server/room.js';
@@ -174,6 +174,55 @@ const mkRoom = (clock, extra = {}) => new Room('ABCD', { now: clock.now, setTime
   assert.equal(room.phase, 'final', 'termina quando todas são achadas');
   assert.equal(room.rounds[0].type, 'wordsearch');
   assert.ok(room.players.get(beto.id).total > room.players.get(ana.id).total);
+}
+
+// ---------- Caça-Palavras Corrida · Mistura (sem tema, caminho livre, extras) ----------
+{
+  const clock = fakeClock();
+  const room = mkRoom(clock);
+  const ana = room.addPlayer({ name: 'Ana' });
+  const beto = room.addPlayer({ name: 'Beto' });
+  room.setOptions(ana.id, { mode: 'corrida-cacapalavras', rounds: 1, tema: 'mistura' });
+  assert.equal(room.options.tema, 'mistura');
+  room.start(ana.id);
+  clock.advance(3500);
+  const { placed, grid } = room.rd;
+  assert.equal(room.stateFor(ana.id).play.free, true);
+  assert.ok(placed.length >= 15, 'muitas palavras');
+  const cnt = {};
+  placed.forEach((p) => p.cells.forEach((c) => (cnt[c] = (cnt[c] || 0) + 1)));
+  assert.ok(Object.values(cnt).some((n) => n > 1), 'palavras se cruzam');
+  assert.equal(room.act(ana.id, { a: 'mark', cells: [0, 2] }).ok, false, 'precisa ser vizinha');
+  const r = room.act(ana.id, { a: 'mark', cells: placed[0].cells });
+  assert.ok(r.ok && !r.extra);
+  // procura uma palavra extra (fora da lista) formada por um caminho livre
+  const N = 12;
+  const listed = new Set(placed.map((p) => p.word));
+  let extra = null;
+  const dfs = (path) => {
+    if (extra) return;
+    const w = path.map((i) => grid[i]).join('');
+    if (w.length >= 5 && isCommon(w) && !listed.has(w)) { extra = path.slice(); return; }
+    if (w.length >= 5) return;
+    const i = path[path.length - 1];
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const rr = Math.floor(i / N) + dr, cc = (i % N) + dc;
+      const j = rr * N + cc;
+      if ((dr || dc) && rr >= 0 && cc >= 0 && rr < N && cc < N && !path.includes(j)) dfs([...path, j]);
+    }
+  };
+  for (let i = 0; i < N * N && !extra; i++) dfs([i]);
+  assert.ok(extra, 'achou uma extra para testar');
+  {
+    const e = room.act(beto.id, { a: 'mark', cells: extra });
+    assert.ok(e.ok && e.extra, 'extra vale');
+    assert.equal(e.pts, extra.length * 4);
+    assert.equal(room.act(beto.id, { a: 'mark', cells: extra }).dup, true);
+    assert.ok(room.act(ana.id, { a: 'mark', cells: extra }).ok, 'cada um pode achar a mesma extra');
+  }
+  clock.advance(180 * 1000 + 400);
+  assert.equal(room.phase, 'final');
+  assert.equal(room.rounds[0].players[beto.id].extras.length, 1);
 }
 
 // ---------- Sudoku Duelo ----------

@@ -33,7 +33,6 @@ export const MULTI_MODES = {
       'Palavras de no mínimo 3 letras; quanto maior, muito mais pontos.',
       'Várias pessoas podem achar a mesma palavra: todas ganham os pontos.',
       'No fim, o tanque mostra quantas palavras foram únicas e quantas repetidas.',
-      'Palavra fora do dicionário? A IA confere se ela existe (✨).',
     ],
     options: {
       rounds: { ...ROUNDS, default: 3 },
@@ -49,13 +48,15 @@ export const MULTI_MODES = {
     icon: '🔍',
     short: 'Quem marca primeiro leva a palavra',
     rules: [
-      'Todos jogam na MESMA grade 12×12 com 10 palavras de um tema.',
+      'Todos jogam na MESMA grade 12×12: 10 palavras de um tema ou a 🎲 Mistura (sem tema).',
       'Quem marcar a palavra primeiro leva os pontos (10 por letra) e ela fica com a sua cor.',
-      'A rodada acaba quando todas forem achadas ou o tempo acabar.',
+      'Na Mistura as palavras se cruzam e algumas dobram (horizontal + vertical): arraste letra por letra. Outras palavras comuns de 5+ letras que você formar valem 4 por letra.',
+      'A rodada acaba quando todas da lista forem achadas ou o tempo acabar.',
     ],
     options: {
       rounds: { ...ROUNDS, default: 3 },
       seconds: { label: 'Tempo', choices: [120, 180, 240, 300], default: 180, format: 'time' },
+      tema: { label: 'Tema', choices: ['surpresa', 'mistura'], default: 'surpresa', format: 'tema' },
     },
   },
   'sudoku-duelo': {
@@ -166,6 +167,7 @@ export function formatOption(spec, v) {
   if (spec.format === 'time') return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
   if (spec.format === 'grid') return `${v}×${v}`;
   if (spec.format === 'difficulty') return DIFFICULTY_LABELS[v] || v;
+  if (spec.format === 'tema') return v === 'mistura' ? '🎲 Mistura' : 'Surpresa';
   return String(v);
 }
 

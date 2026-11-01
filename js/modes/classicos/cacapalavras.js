@@ -2,8 +2,10 @@
 // Palavras escondidas numa grade 12×12, em 8 direções. 4 minutos.
 import { h, createTimer, fmtTime, toast, hud } from '../../core/ui.js';
 import { createRng } from '../../core/rng.js';
-import { buildWordSearch, lineBetween as line2, matchPlaced, WS_SIZE } from '../../core/wordsearch.js';
+import { buildWordSearch, buildMixedSearch, attachSelection, matchPlaced, matchFree, WS_SIZE, MIX_EXTRA_MIN, MIX_EXTRA_PTS } from '../../core/wordsearch.js';
+import { isCommon } from '../../core/dict.js';
 import { TEMAS } from '../../../data/temas.js';
+import { MISTURA } from '../../../data/mistura.js';
 
 const SIZE = WS_SIZE;
 const TIME = 240;
@@ -15,60 +17,42 @@ export default {
   category: 'classico',
   name: 'Caça-Palavras',
   icon: '🔍',
-  tagline: 'Grade 12×12 · tema surpresa · 4 min',
+  tagline: 'Grade 12×12 · tema surpresa ou Mistura · 4 min',
+  options: { key: 'tema', label: 'Tema', choices: [['surpresa', 'Tema surpresa'], ['mistura', '🎲 Mistura (sem tema)']], default: 'surpresa' },
+  rankingKey: (opts) => (opts.tema === 'mistura' ? 'classico-cacapalavras-mistura' : 'classico-cacapalavras'),
+  rankingVariants: [['classico-cacapalavras', 'Tema'], ['classico-cacapalavras-mistura', 'Mistura']],
   rules: [
-    'Encontre as 10 palavras do tema escondidas na grade.',
-    'Elas podem estar na horizontal, vertical ou diagonal — e também de trás para frente.',
-    'Arraste do começo ao fim da palavra para marcá-la.',
-    'Pontos: 10 por letra + 2 por segundo restante se achar todas.',
+    'Tema surpresa: encontre as 10 palavras do tema, em linha reta (8 direções, até de trás para frente). Arraste do começo ao fim.',
+    'Mistura: palavras de todo tipo, cruzadas umas nas outras — algumas dobram juntando horizontal e vertical. Arraste passando letra por letra.',
+    'Na Mistura, outras palavras comuns de 5+ letras que você formar arrastando também valem pontos (extras)!',
+    'Pontos: 10 por letra (extras: 4 por letra) + 2 por segundo restante se achar todas da lista.',
   ],
-  start(root, api) {
+  start(root, api, opts = {}) {
     const rng = createRng();
-    const temaNome = rng.pick(Object.keys(TEMAS));
-    const pool = rng.shuffle(TEMAS[temaNome]);
-    const { grid, placed } = buildWordSearch(rng, pool);
+    const mix = opts.tema === 'mistura';
+    const temaNome = mix ? 'Mistura' : rng.pick(Object.keys(TEMAS));
+    const { grid, placed } = mix ? buildMixedSearch(rng, rng.shuffle(MISTURA)) : buildWordSearch(rng, rng.shuffle(TEMAS[temaNome]));
+    const extras = new Set();
     const foundIds = new Set();
     const items = [];
     let score = 0;
 
     const top = hud([['time', 'Tempo'], ['score', 'Pontos'], ['count', 'Achadas']]);
     top.set('score', 0);
-    top.set('count', `0/${placed.length}`);
+    top.set('count', 0);
 
     const board = h('div', { class: 'board ws', style: `--n:${SIZE}` });
     const cells = grid.map((l, i) => h('div', { class: 'cell', 'data-i': i }, l.toUpperCase()));
     board.append(...cells);
     const listEl = h('ul', { class: 'ws-list' }, placed.map((p, k) => h('li', { 'data-k': k }, p.display.toUpperCase())));
 
-    let start = null;
-    let line = [];
-    const cellAt = (x, y) => {
-      const el = document.elementFromPoint(x, y)?.closest?.('.cell');
-      return el && board.contains(el) ? Number(el.dataset.i) : null;
-    };
-    const lineBetween = (a, b) => line2(a, b, SIZE);
-    const paint = () => cells.forEach((c, i) => c.classList.toggle('sel', line.includes(i)));
+    const extraList = h('ul', { class: 'ws-list extras' });
+    const flash = (sel, cls) => sel.forEach((i) => { cells[i].classList.add(cls); setTimeout(() => cells[i].classList.remove(cls), 450); });
+    const paint = (sel) => cells.forEach((c, i) => c.classList.toggle('sel', sel.includes(i)));
 
-    board.addEventListener('pointerdown', (e) => {
-      const i = cellAt(e.clientX, e.clientY);
-      if (i == null) return;
-      e.preventDefault();
-      board.setPointerCapture?.(e.pointerId);
-      start = i;
-      line = [i];
-      paint();
-    });
-    board.addEventListener('pointermove', (e) => {
-      if (start == null) return;
-      const i = cellAt(e.clientX, e.clientY);
-      if (i == null) return;
-      const l = lineBetween(start, i);
-      if (l) { line = l; paint(); }
-    });
-    const up = () => {
-      if (start == null) return;
-      start = null;
-      const k = matchPlaced(placed, line, (idx) => foundIds.has(idx));
+    attachSelection(board, { size: SIZE, mode: mix ? 'free' : 'line', onPaint: paint, onDone: (line) => {
+      if (ended) return;
+      const k = mix ? matchFree(placed, grid, line, (idx) => foundIds.has(idx)) : matchPlaced(placed, line, (idx) => foundIds.has(idx));
       if (k >= 0) {
         foundIds.add(k);
         const pts = placed[k].word.length * 10;
@@ -78,17 +62,24 @@ export default {
         placed[k].cells.forEach((i) => { cells[i].classList.add('found'); cells[i].style.setProperty('--hue', hue); });
         listEl.querySelector(`[data-k="${k}"]`).classList.add('done');
         top.set('score', score);
-        top.set('count', `${foundIds.size}/${placed.length}`);
+        top.set('count', foundIds.size + extras.size);
         toast(root, `${placed[k].display.toUpperCase()} +${pts}`, 'good');
         if (foundIds.size === placed.length) finish(true);
-      } else if (line.length > 2) {
-        toast(root, 'Não é uma das palavras', 'bad');
+        return;
       }
-      line = [];
-      paint();
-    };
-    board.addEventListener('pointerup', up);
-    board.addEventListener('pointercancel', up);
+      const w = line.map((i) => grid[i]).join('');
+      if (mix && w.length >= MIX_EXTRA_MIN && isCommon(w) && !extras.has(w) && !placed.some((p) => p.word === w)) {
+        extras.add(w);
+        const pts = w.length * MIX_EXTRA_PTS;
+        score += pts;
+        items.push({ label: w, pts });
+        extraList.prepend(h('li', { class: 'done' }, w.toUpperCase(), h('small', {}, ` +${pts}`)));
+        top.set('score', score);
+        top.set('count', foundIds.size + extras.size);
+        flash(line, 'good');
+        toast(root, `Extra! ${w.toUpperCase()} +${pts}`, 'good');
+      } else if (line.length > 2) flash(line, extras.has(w) || placed.some((p) => p.word === w) ? 'dup' : 'bad');
+    } });
 
     const timer = createTimer({ seconds: TIME, onTick: (r) => top.set('time', fmtTime(r)), onEnd: () => finish(false) });
 
@@ -104,15 +95,15 @@ export default {
       api.end({
         score,
         revealItems: items,
-        summary: [['Tema', temaNome], ['Achadas', `${foundIds.size}/${placed.length}`], ['Bônus de tempo', bonus]],
+        summary: [['Tema', temaNome], ['Da lista', foundIds.size], ...(mix ? [['Extras', extras.size]] : []), ['Bônus de tempo', bonus]],
         extra: h('p', {}, 'Palavras não encontradas ficaram destacadas na grade.'),
       });
     }
 
     root.append(
       top.el,
-      h('h2', { class: 'theme-title' }, `Tema: ${temaNome}`),
-      h('div', { class: 'play-area' }, board, listEl),
+      h('h2', { class: 'theme-title' }, mix ? '🎲 Mistura · sem tema' : `Tema: ${temaNome}`),
+      h('div', { class: 'play-area' }, board, mix ? h('div', { class: 'side-col' }, listEl, h('h3', { class: 'extras-title' }, 'Extras'), extraList) : listEl),
       h('div', { class: 'row-actions' }, h('button', { class: 'btn ghost', onclick: () => finish(false) }, 'Encerrar partida'))
     );
     return () => timer.stop();

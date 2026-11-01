@@ -42,8 +42,8 @@ export default {
       size,
       letters: grid,
       async onSubmit(w, path) {
-        if (w.length < 3) { toast(root, 'Mínimo 3 letras', 'bad'); return { ok: false }; }
-        if (found.has(w)) { toast(root, 'Já encontrada', 'dup'); return { dup: true }; }
+        if (w.length < 3) return { ok: false };
+        if (found.has(w)) return { dup: true };
         const v = await confirmWord(root, w, () => ended);
         if (!v.ok) return { ok: false };
         if (found.has(w)) return { dup: true };
@@ -54,13 +54,13 @@ export default {
         panel.add(w, pts, v.ai);
         items.push({ label: w, pts, ai: v.ai });
         top.set('score', score);
-        top.set('count', `${found.size}/${words.length}`);
+        top.set('count', found.size);
         toast(root, `+${pts}`, 'good');
         return { ok: true };
       },
     });
     top.set('score', 0);
-    top.set('count', `0/${words.length}`);
+    top.set('count', 0);
 
     const timer = createTimer({
       seconds: 180,
@@ -77,7 +77,7 @@ export default {
       api.end({
         score,
         revealItems: items,
-        summary: [['Palavras', found.size], ['Possíveis', words.length], ['Maior palavra', [...found].sort((a, b) => b.length - a.length)[0]?.toUpperCase() || '—']],
+        summary: [['Palavras', found.size], ['Maior palavra', [...found].sort((a, b) => b.length - a.length)[0]?.toUpperCase() || '—']],
         extra: missedWords(words, found),
         online: online && { ticket: online.ticket, palavras: [...found].map((w) => ({ w, path: paths[w] })) },
       });

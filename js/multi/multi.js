@@ -374,6 +374,22 @@ function arenaLobby(s, el) {
     h('ul', { class: 'rules' }, mode.rules.map((r) => h('li', {}, r))));
 }
 
+// Convite: mandar o link da sala pelo WhatsApp, pelo menu do celular, copiar ou QR.
+function shareBox(code, link, mode) {
+  const text = `Bora jogar Trama comigo? ${mode ? `${mode.icon} ${mode.name} · ` : ''}sala ${code}: ${link}`;
+  const qr = h('img', { class: 'qr share-qr hidden', alt: `QR code para entrar na sala ${code}` });
+  return h('div', { class: 'share-box' },
+    h('a', { class: 'link-text', href: link, onclick: (e) => { e.preventDefault(); copy(link); } }, link.replace(/^https?:\/\//, '')),
+    h('div', { class: 'row-actions center' },
+      h('a', { class: 'btn whatsapp', href: `https://wa.me/?text=${encodeURIComponent(text)}`, target: '_blank', rel: 'noopener' }, '💬 Enviar no WhatsApp'),
+      navigator.share ? h('button', { class: 'btn ghost', onclick: () => navigator.share({ title: 'Trama', text, url: link }).catch(() => {}) }, '📤 Enviar link') : '',
+      h('button', { class: 'btn ghost', onclick: () => copy(link) }, '🔗 Copiar link')),
+    h('div', { class: 'row-actions center' },
+      h('button', { class: 'btn ghost small', onclick: () => { if (!qr.src) qr.src = `api/qr?d=${encodeURIComponent(link)}`; qr.classList.toggle('hidden'); } }, '▦ Mostrar QR code'),
+      h('a', { class: 'btn ghost small', href: `?tela=${code}`, target: '_blank', rel: 'noopener' }, '📺 Abrir telão (TV)')),
+    qr);
+}
+
 function lobbyView() {
   const el = h('div', { class: 'lobby' });
   return {
@@ -396,10 +412,7 @@ function lobbyView() {
         h('div', { class: 'card code-card' },
           h('p', {}, 'Código da sala'),
           h('div', { class: 'room-code' }, s.code),
-          h('div', { class: 'row-actions center' },
-            h('button', { class: 'btn ghost small', onclick: () => copy(link) }, '🔗 Copiar link'),
-            navigator.share ? h('button', { class: 'btn ghost small', onclick: () => navigator.share({ title: 'Trama', text: `Entra na minha sala do Trama! Código ${s.code}`, url: link }).catch(() => {}) }, '📤 Compartilhar') : '',
-            h('a', { class: 'btn ghost small', href: `?tela=${s.code}`, target: '_blank', rel: 'noopener' }, '📺 Abrir telão (TV)'))),
+          shareBox(s.code, link, mode)),
         h('div', { class: 'lobby-grid' },
           h('div', { class: 'card' },
             h('h3', {}, `Jogadores (${s.players.length})`),
@@ -485,11 +498,9 @@ function gradePlay(s) {
     letters: s.play.grid,
     bonus: s.play.bonus || {},
     onSubmit: async (w, path) => {
-      const slow = setTimeout(() => toast(root, `Verificando ${w.toUpperCase()} com IA…`), 400);
       const r = await net.act('submit', { word: w, path });
-      clearTimeout(slow);
-      if (r.ok) toast(root, `${r.ai ? '✨ IA confirmou! ' : ''}${r.mult > 1 ? `×${r.mult}! ` : ''}+${r.pts}${r.gain ? ` · ❤️+${r.gain}s` : ''}`, 'good');
-      else toast(root, r.reason, r.dup ? 'dup' : 'bad');
+      // erro só pisca em vermelho/amarelo na grade; acerto mostra os pontos
+      if (r.ok) toast(root, `${r.mult > 1 ? `×${r.mult}! ` : ''}+${r.pts}${r.gain ? ` · ❤️+${r.gain}s` : ''}`, 'good');
       return r;
     },
   });
@@ -536,7 +547,7 @@ function gradeTv(s) {
   const board = liveBoard(s, { title: modeOf(s).survival ? '❤️ Vidas' : 'Placar ao vivo' });
   const teamEl = h('div', { class: 'tv-teams' });
   return {
-    el: h('div', { class: 'playing' }, hudBar(s, h('div', { class: 'hud-item' }, h('span', {}, 'Possíveis'), h('strong', {}, s.play.possible))), teamEl, h('div', { class: 'play-area' }, tiles, board.el)),
+    el: h('div', { class: 'playing' }, hudBar(s), teamEl, h('div', { class: 'play-area' }, tiles, board.el)),
     update: (st) => {
       board.update(st);
       if (st.teams) {
@@ -553,21 +564,31 @@ function wsPlay(s, interactive) {
   const ws = createWsBoard({
     grid: s.play.grid,
     size: s.play.size,
+    free: !!s.play.free,
     interactive,
     onMark: async (cells) => {
       const r = await net.act('mark', { cells });
-      if (r.ok) { toast(root, `${r.word.toUpperCase()} +${r.pts}`, 'good'); play('big'); }
-      else { toast(root, r.reason, r.dup ? 'dup' : 'bad'); play(r.dup ? 'steal' : 'bad'); }
+      if (r.ok) {
+        toast(root, `${r.extra ? 'Extra! ' : ''}${r.word.toUpperCase()} +${r.pts}`, 'good');
+        play(r.extra ? 'good' : 'big');
+        if (r.extra) { ws.flash(cells, 'good'); extras.prepend(h('li', { class: 'done' }, r.word.toUpperCase(), h('small', {}, ` +${r.pts}`))); }
+      } else if (r.dup && !/primeiro/.test(r.reason || '')) { ws.flash(cells, 'dup'); play('dup'); }
+      else if (r.dup) { toast(root, r.reason, 'dup'); play('steal'); }
+      else { ws.flash(cells, 'bad'); play('bad'); }
     },
   });
+  const extras = h('ul', { class: 'ws-list extras' });
   const list = h('ul', { class: 'ws-list race' });
   const board = liveBoard(s);
   const myPts = h('strong', {}, '0');
   let known = 0;
   const el = h('div', { class: 'playing' },
     hudBar(s, h('div', { class: 'hud-item' }, h('span', {}, interactive ? 'Meus pontos' : 'Achadas'), interactive ? myPts : h('strong', { class: 'ws-count' }, '0'))),
-    h('h2', { class: 'theme-title' }, `Tema: ${s.play.theme}`),
-    h('div', { class: 'play-area' }, ws.el, h('div', { class: 'side-col' }, h('div', { class: 'found-panel' }, h('h3', {}, 'Palavras'), list), interactive ? '' : board.el)));
+    h('h2', { class: 'theme-title' }, s.play.free ? '🎲 Mistura · sem tema' : `Tema: ${s.play.theme}`),
+    h('div', { class: 'play-area' }, ws.el, h('div', { class: 'side-col' },
+      h('div', { class: 'found-panel' }, h('h3', {}, 'Palavras'), list),
+      s.play.free && interactive ? h('div', { class: 'found-panel' }, h('h3', {}, 'Suas extras'), extras) : '',
+      interactive ? '' : board.el)));
   return {
     el,
     update(st) {
@@ -577,7 +598,7 @@ function wsPlay(s, interactive) {
       const found = st.play.words.filter((w) => w.by).length;
       if (!interactive) {
         if (found > known) play('good');
-        el.querySelector('.ws-count').textContent = `${found}/${st.play.words.length}`;
+        el.querySelector('.ws-count').textContent = found;
       }
       known = found;
       list.replaceChildren(...st.play.words.map((w) => {
@@ -648,13 +669,19 @@ function resultsView(s) {
   const stagger = () => `animation-delay:${Math.min((delay += 0.02), 0.8)}s`;
   const wordChip = (w) =>
     h('span', { class: `wchip ${w.status}`, style: stagger(), title: w.status === 'unique' ? 'Só esta pessoa achou' : `${w.by} pessoas acharam` },
-      w.status === 'unique' ? '★ ' : '', w.w.toUpperCase(), w.ai ? ' ✨' : '', w.status === 'shared' ? h('span', { class: 'by-count', 'aria-label': `${w.by} pessoas` }, `👥${w.by}`) : '', h('small', {}, `+${w.pts}`));
+      w.status === 'unique' ? '★ ' : '', w.w.toUpperCase(), w.status === 'shared' ? h('span', { class: 'by-count', 'aria-label': `${w.by} pessoas` }, `👥${w.by}`) : '', h('small', {}, `+${w.pts}`));
 
   const detailFor = (id) => {
     const d = r.players?.[id];
     if (!d) return h('small', { class: 'muted' }, 'Entrou depois desta rodada');
     if (r.type === 'grade') return d.words.length ? [tank(d.unique, d.shared, 'small'), ...d.words.map(wordChip)] : h('small', { class: 'muted' }, 'Nenhuma palavra');
-    if (r.type === 'wordsearch') return d.found.length ? d.found.map((w) => h('span', { class: 'wchip mine', style: `${stagger()};--hue:${hueOf(id)}` }, w.toUpperCase())) : h('small', { class: 'muted' }, 'Nenhuma palavra');
+    if (r.type === 'wordsearch') {
+      const ex = d.extras || [];
+      return d.found.length || ex.length
+        ? [...d.found.map((w) => h('span', { class: 'wchip mine', style: `${stagger()};--hue:${hueOf(id)}` }, w.toUpperCase())),
+          ...ex.map((w) => h('span', { class: 'wchip', style: stagger(), title: 'Palavra extra' }, '+ ', w.toUpperCase()))]
+        : h('small', { class: 'muted' }, 'Nenhuma palavra');
+    }
     if (r.type === 'sudoku') {
       return h('small', {}, d.done ? `✅ Terminou em ${d.place}º · ${fmtTime(d.seconds)} · ${d.errors} erro(s)` : `Não terminou · ${d.filled}/${r.empty} números certos · ${d.errors} erro(s)`);
     }
@@ -680,15 +707,14 @@ function resultsView(s) {
     legend = h('p', { class: 'legend' },
       h('span', { class: 'wchip unique' }, '★ única'),
       h('span', { class: 'wchip shared' }, 'repetida ', h('span', { class: 'by-count' }, '👥2')),
-      h('span', { class: 'wchip' }, '✨ confirmada pela IA'),
       h('span', { class: 'legend-note' }, 'Únicas e repetidas valem os mesmos pontos.'));
     extra = h('div', {},
       r.totals ? h('div', { class: 'tank-box' }, h('h3', {}, 'Tanque da rodada'), tank(r.totals.unique, r.totals.shared, 'big'), h('p', { class: 'hint' }, `${r.totals.distinct} palavras diferentes achadas por todos`)) : '',
       r.longest ? h('p', { class: 'highlight' }, '📏 Maior palavra da rodada: ', h('strong', {}, r.longest.w.toUpperCase()), ` (${byId[r.longest.id]?.name || '—'})`) : '',
-      r.missed?.length ? h('div', { class: 'missed' }, h('h4', {}, `Palavras que ninguém achou (${r.possible} possíveis na grade), as mais conhecidas primeiro:`), h('p', {}, r.missed.map((w) => w.toUpperCase()).join(' · '))) : '');
+      r.missed?.length ? h('div', { class: 'missed' }, h('h4', {}, 'Algumas palavras que ninguém achou:'), h('p', {}, r.missed.map((w) => w.toUpperCase()).join(' · '))) : '');
   } else if (r.type === 'wordsearch') {
     const missing = r.words.filter((w) => !w.by);
-    extra = h('p', { class: 'highlight' }, `Tema: ${r.theme}`, missing.length ? ` · Ninguém achou: ${missing.map((w) => w.display.toUpperCase()).join(', ')}` : ' · Todas as palavras foram achadas!');
+    extra = h('p', { class: 'highlight' }, r.free ? '🎲 Mistura' : `Tema: ${r.theme}`, missing.length ? ` · Ninguém achou: ${missing.map((w) => w.display.toUpperCase()).join(', ')}` : ' · Todas as palavras foram achadas!');
   } else if (r.type === 'sudoku') {
     extra = h('p', { class: 'highlight' }, `Sudoku ${DIFF[r.difficulty]} · bônus de pódio: 1º +500 · 2º +250 · 3º +100`);
   }

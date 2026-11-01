@@ -56,8 +56,8 @@ export default {
       letters: grid,
       bonus,
       async onSubmit(w, path) {
-        if (w.length < 3) { toast(root, 'Mínimo 3 letras', 'bad'); return { ok: false }; }
-        if (found.has(w)) { toast(root, 'Já encontrada', 'dup'); return { dup: true }; }
+        if (w.length < 3) return { ok: false };
+        if (found.has(w)) return { dup: true };
         const v = await confirmWord(root, w, () => ended);
         if (!v.ok) return { ok: false };
         if (found.has(w)) return { dup: true };

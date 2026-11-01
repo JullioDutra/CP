@@ -13,7 +13,7 @@ export function foundPanel() {
     add(w, pts, ai = false) {
       n++;
       title.textContent = `Palavras (${n})`;
-      list.prepend(h('li', { title: ai ? 'Confirmada pela IA' : null }, w.toUpperCase(), ai ? ' ✨' : '', h('small', {}, `+${pts}`)));
+      list.prepend(h('li', {}, w.toUpperCase(), h('small', {}, `+${pts}`)));
     },
   };
 }
@@ -24,18 +24,16 @@ export function missedWords(all, found, limit = 40) {
   return h(
     'div',
     { class: 'missed' },
-    h('h4', {}, `Palavras que ficaram de fora (${missed.length} no total, as mais conhecidas primeiro):`),
+    h('h4', {}, 'Algumas palavras que ficaram de fora:'),
     h('p', {}, missed.slice(0, limit).map((w) => `${w.toUpperCase()} (${wordPoints(w)})`).join(' · '))
   );
 }
 
-// Palavra fora do dicionário? Pergunta à IA (via servidor) antes de recusar.
+// Palavra fora do dicionário? Confere no servidor (IA) antes de recusar, sem avisar o jogador.
 export async function confirmWord(root, w, isOver = () => false) {
   if (isWord(w)) return { ok: true, ai: false };
-  toast(root, `Verificando ${w.toUpperCase()} com IA…`);
+  // verificação silenciosa: se não existir, a grade só pisca em vermelho
   const r = await checkWord(w);
   if (isOver()) return { ok: false };
-  if (!r.ok) toast(root, r.fonte === 'indisponivel' || r.fonte === 'invalida' ? `${w.toUpperCase()} não está no dicionário` : `${w.toUpperCase()} não existe (verificado pela IA)`, 'bad');
-  else toast(root, `✨ ${w.toUpperCase()} confirmada pela IA`, 'good');
   return { ok: r.ok, ai: r.ok };
 }

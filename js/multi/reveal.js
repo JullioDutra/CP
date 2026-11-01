@@ -27,13 +27,22 @@ export function buildEvents(r) {
     return [...words, ...extras];
   }
   if (r.type === 'wordsearch') {
-    return r.words
+    const listed = r.words
       .filter((w) => w.by)
       .map((w) => {
         const len = normalize(w.display).length;
         return { label: w.display.toUpperCase(), len, pts: len * 10, gains: [{ id: w.by, pts: len * 10, words: 1 }] };
-      })
-      .sort((a, b) => a.pts - b.pts || a.label.localeCompare(b.label));
+      });
+    // Mistura: palavras extras (4 por letra); a mesma extra pode ser de várias pessoas
+    const ex = new Map();
+    for (const [id, d] of Object.entries(r.players || {})) {
+      for (const w of d.extras || []) {
+        const e = ex.get(w) || { label: w.toUpperCase(), len: w.length, pts: w.length * 4, gains: [] };
+        e.gains.push({ id, pts: w.length * 4, words: 1 });
+        ex.set(w, e);
+      }
+    }
+    return [...listed, ...ex.values()].sort((a, b) => a.pts - b.pts || a.label.localeCompare(b.label));
   }
   if (r.type === 'list') {
     // lista genérica (modos solo): { items: [{ id, label, pts, ai? }] }
@@ -143,7 +152,7 @@ export function createReveal({ round, players, totals, you, hueOf, final, onDone
     const who = e.gains.map((g) => players.find((p) => p.id === g.id)).filter(Boolean);
     card.className = `reveal-card ${big ? 'big' : ''}`;
     card.replaceChildren(
-      h('div', { class: 'rc-word' }, e.playerLabel ? `${who[0]?.avatar} ${who[0]?.name}` : e.label, e.ai ? ' ✨' : ''),
+      h('div', { class: 'rc-word' }, e.playerLabel ? `${who[0]?.avatar} ${who[0]?.name}` : e.label),
       h('div', { class: 'rc-meta' },
         h('span', { class: 'rc-pts' }, e.playerLabel ? e.label : `+${e.pts}`),
         e.playerLabel ? '' : h('span', { class: 'rc-who' }, who.map((p) => h('span', { class: 'rc-av', style: `--hue:${hueOf(p.id)}`, title: p.name }, p.avatar))),

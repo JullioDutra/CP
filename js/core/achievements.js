@@ -18,6 +18,7 @@ export const ACHIEVEMENTS = [
 
 // Temas visuais: liberados por conquistas.
 export const THEMES = [
+  { key: 'claro', name: 'Claro', swatch: ['#2563eb', '#f8fafc'], unlock: null },
   { key: 'lavanda', name: 'Lavanda', swatch: ['#6a5ae0', '#f6f4fb'], unlock: null },
   { key: 'menta', name: 'Menta', swatch: ['#1b7a70', '#eef8f5'], unlock: 'vitoria' },
   { key: 'pessego', name: 'Pêssego', swatch: ['#c2552d', '#fdf3ec'], unlock: 'sequencia3' },

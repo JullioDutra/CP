@@ -1,6 +1,6 @@
 // Service worker do Trama: guarda o jogo para abrir rápido e jogar os modos solo sem internet.
 // Partidas em grupo, ranking e IA continuam precisando do servidor (não são guardados).
-const VERSION = 'trama-v1';
+const VERSION = 'trama-v2';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'icon.svg', 'css/style.css',
   'js/main.js', 'js/core/ui.js', 'js/core/dict.js', 'js/core/letters.js', 'js/core/rng.js', 'js/core/wordgrid.js',
@@ -10,7 +10,7 @@ const SHELL = [
   'js/modes/shared-wordlist.js', 'js/modes/classicos/grade.js', 'js/modes/classicos/cacapalavras.js', 'js/modes/classicos/sudoku.js',
   'js/modes/novos/sobrevivencia.js', 'js/modes/novos/diario.js',
   'js/multi/multi.js', 'js/multi/net.js', 'js/multi/wsboard.js', 'js/multi/sudokuduel.js', 'js/multi/reveal.js',
-  'js/screens/global.js', 'data/temas.js', 'data/palavras.txt', 'data/comuns.txt',
+  'js/screens/global.js', 'data/temas.js', 'data/mistura.js', 'data/palavras.txt', 'data/comuns.txt',
 ];
 
 self.addEventListener('install', (e) => {
