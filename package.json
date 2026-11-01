@@ -1,0 +1,12 @@
+{
+  "name": "trama",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trama — jogos de letras e lógica com ranking por partida",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node tests/letters.test.mjs && node tests/modes.test.mjs",
+    "build:dict": "node data/build-dict.cjs palavras.txt data/palavras.txt"
+  }
+}
