@@ -2,14 +2,14 @@
 import { h, fmtTime, toast } from '../core/ui.js';
 import { createWordGrid } from '../core/wordgrid.js';
 import { AVATARS, MULTI_MODES, PLAYER_HUES, formatOption } from '../core/multimodes.js';
-import { getPlayerName, setPlayerName, addScore } from '../core/ranking.js';
+import { getPlayerName, addScore } from '../core/ranking.js';
+import { getAvatar, saveIdentity, api } from '../core/profile.js';
 import { play, muteButton } from '../core/sound.js';
 import { createNet } from './net.js';
 import { createWsBoard } from './wsboard.js';
 import { createSudokuDuel } from './sudokuduel.js';
 
 const SESSION_KEY = 'trama.session';
-const AVATAR_KEY = 'trama.avatar';
 const DIFF = { facil: 'Fácil', medio: 'Médio', dificil: 'Difícil' };
 
 let ctx = null; // { screen, setCleanup, showMenu }
@@ -32,8 +32,6 @@ const store = {
   get(k) { try { return JSON.parse(sessionStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } },
 };
-const getAvatar = () => { try { return localStorage.getItem(AVATAR_KEY) || AVATARS[0]; } catch { return AVATARS[0]; } };
-const setAvatar = (a) => { try { localStorage.setItem(AVATAR_KEY, a); } catch { /* ignore */ } };
 const serverNow = () => Date.now() + offset;
 const me = () => state?.players.find((p) => p.id === state.you);
 const isHost = () => state?.hostId === state?.you;
@@ -161,15 +159,15 @@ function showHome({ code = '', error = '' } = {}) {
     }, a)
   );
 
-  function go(action) {
+  async function go(action) {
     const name = nameInput.value.trim();
     if (!name) { errEl.textContent = 'Digite seu nome.'; nameInput.focus(); return; }
     if (action.t === 'join' && action.code.length !== 4) { errEl.textContent = 'O código da sala tem 4 letras.'; codeInput.focus(); return; }
-    setPlayerName(name);
-    setAvatar(avatar);
     store.set(SESSION_KEY, null);
     showConnecting();
-    ensureNet((err) => showHome({ code: codeInput.value, error: err })).send({ ...action, name, avatar });
+    // perfil sem login: junta as partidas no ranking global e nas estatísticas
+    const prof = await saveIdentity(name, avatar);
+    ensureNet((err) => showHome({ code: codeInput.value, error: err })).send({ ...action, name, avatar, profile: prof?.token });
   }
 
   ctx.screen(
@@ -604,9 +602,12 @@ function resultsView(s) {
   }
 
   const actions = h('div', { class: 'row-actions center' });
+  const globalEl = h('div', { class: 'global-pos' });
+  if (final && !s.spectator) showGlobalPosition(s, globalEl);
   const el = h('div', { class: 'results card' },
     h('h2', {}, final ? '🏆 Fim de jogo!' : `Fim da rodada ${s.round} de ${s.options.rounds}`),
     podium,
+    globalEl,
     extra,
     legend,
     h('div', { class: 'result-list' }, rows),
@@ -648,4 +649,20 @@ function tank(unique, shared, size = 'small') {
       unique ? h('div', { class: 'tank-unique', style: `width:${(unique / total) * 100}%` }, size === 'big' ? `${unique}` : '') : '',
       shared ? h('div', { class: 'tank-shared', style: `width:${(shared / total) * 100}%` }, size === 'big' ? `${shared}` : '') : ''),
     h('div', { class: 'tank-label' }, h('span', { class: 'u' }, `★ ${unique} única${unique === 1 ? '' : 's'}`), h('span', { class: 's' }, `${shared} repetida${shared === 1 ? '' : 's'}`)));
+}
+
+// Depois do pódio: em que lugar a sua partida ficou no ranking global da semana.
+export function multiVariant(options) {
+  const m = MULTI_MODES[options.mode];
+  return m.game === 'grade' ? String(options.size) : m.game === 'sudoku' ? options.difficulty : '';
+}
+
+async function showGlobalPosition(s, el) {
+  const variant = multiVariant(s.options);
+  await new Promise((r) => setTimeout(r, 400)); // dá tempo do servidor gravar a partida
+  try {
+    const q = `ranking?modo=${s.options.mode}${variant ? `&variante=${variant}` : ''}&periodo=semana`;
+    const r = await api(q);
+    if (r.voce) el.replaceChildren(h('p', {}, '🌍 Sua melhor partida está em ', h('strong', {}, `${r.voce.pos}º lugar`), ' no ranking global da semana (', `${r.voce.score} pts`, ').'));
+  } catch { /* sem servidor de ranking */ }
 }

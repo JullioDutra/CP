@@ -464,3 +464,56 @@ body.offline::before {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Fase 3: perfil e ranking global ---------- */
+.menu-top { display: flex; align-items: center; }
+.profile-chip {
+  appearance: none; border: 0; cursor: pointer; font: inherit; font-weight: 800; color: var(--text);
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 14px 5px 5px; border-radius: 999px;
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.profile-chip:hover { box-shadow: var(--shadow-lg); }
+.pc-avatar { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 50%; background: var(--primary-soft); font-size: 1.2rem; }
+
+.seg { display: inline-flex; padding: 4px; gap: 4px; border-radius: 999px; background: var(--surface-2); margin-bottom: 16px; }
+.seg-btn { appearance: none; border: 0; font: inherit; font-weight: 800; cursor: pointer; padding: 8px 16px; border-radius: 999px; background: transparent; color: var(--muted); }
+.seg-btn.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.ranking.global td.pos { font-size: 1.1rem; width: 2.5rem; }
+.rank-avatar { display: inline-grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 50%; background: var(--primary-soft); }
+.you-pos { margin: 6px 0 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--primary-soft); color: var(--primary-strong); font-weight: 800; }
+.wins-title { margin-top: 22px; }
+.tab-group + .tab-group { margin-top: 8px; }
+
+.global-pos { margin: 10px 0; text-align: center; }
+.global-pos p { margin: 6px 0; }
+.pos-cards { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; border-radius: var(--radius); background: var(--primary-soft); }
+.pos-row { display: flex; gap: 10px; }
+.pos-card { display: flex; flex-direction: column; align-items: center; min-width: 76px; padding: 8px 10px; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+.pos-card strong { font-size: 1.4rem; font-weight: 900; color: var(--primary-strong); }
+.pos-card span { font-size: 0.75rem; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.profile-head { display: flex; align-items: center; gap: 16px; margin: 4px 0 16px; }
+.profile-head h2 { margin: 0; font-size: 1.6rem; }
+.profile-head p { margin: 2px 0 0; }
+.profile-avatar { width: 76px; height: 76px; display: grid; place-items: center; font-size: 2.6rem; border-radius: 24px; background: var(--primary-soft); box-shadow: var(--shadow); }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat { display: flex; flex-direction: column; gap: 2px; padding: 14px; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.stat-icon { font-size: 1.2rem; }
+.stat strong { font-size: 1.4rem; font-weight: 900; overflow-wrap: anywhere; }
+.stat.text strong { font-size: 1.05rem; overflow-wrap: normal; word-break: break-word; }
+.stat span:last-child { font-size: 0.8rem; color: var(--muted); font-weight: 700; }
+.profile-id, .stats-grid + .card { margin-bottom: 16px; }
+.card + .card { margin-top: 16px; }
+.recent { list-style: none; margin: 0; padding: 0; }
+.recent li { display: grid; grid-template-columns: 1fr auto auto auto; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.recent li:last-child { border-bottom: 0; }
+.r-mode { font-weight: 800; }
+.r-mode small { color: var(--muted); font-weight: 700; }
+.r-place { font-size: 0.85rem; color: var(--muted); font-weight: 700; }
+code.secret { font-family: ui-monospace, monospace; padding: 6px 10px; border-radius: 10px; background: var(--surface-2); overflow-wrap: anywhere; }
+.join-form.import { margin-top: 12px; justify-content: flex-start; }
+.import-input { flex: 1; min-width: 0; font: inherit; padding: 10px 14px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface-2); color: var(--text); }
+@media (max-width: 600px) {
+  .recent li { grid-template-columns: 1fr auto; }
+  .seg-btn { padding: 8px 12px; }
+}

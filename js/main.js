@@ -10,6 +10,9 @@ import sobrevivencia from './modes/novos/sobrevivencia.js';
 import diario from './modes/novos/diario.js';
 import { initMulti, openMulti, openTv, roomCodeFromUrl, tvFromUrl, multiRankingModes } from './multi/multi.js';
 import { muteButton } from './core/sound.js';
+import { showRanking as showRankingScreen, showProfile } from './screens/global.js';
+import { saveIdentity, localProfile, getAvatar, serverStatus } from './core/profile.js';
+import { finishOnline } from './core/online-solo.js';
 
 const CLASSICOS = [grade, cacapalavras, sudoku];
 const NOVOS = [sobrevivencia, diario];
@@ -48,6 +51,7 @@ function bestLabel(m) {
 
 function showMenu() {
   screen(
+    h('div', { class: 'menu-top' }, h('span', { class: 'spacer' }), profileChip()),
     h('header', { class: 'brand' }, h('h1', {}, 'Trama'), h('p', {}, 'Jogos de letras e lógica')),
     h(
       'section',
@@ -77,8 +81,17 @@ function showMenu() {
       h('p', { class: 'section-sub' }, 'Variações criadas para o Trama, com mecânicas diferentes.'),
       h('div', { class: 'mode-grid' }, NOVOS.map(modeCard))
     ),
-    h('div', { class: 'row-actions center' }, h('button', { class: 'btn', onclick: () => showRanking() }, '🏆 Ranking'))
+    h('div', { class: 'row-actions center' },
+      h('button', { class: 'btn', onclick: () => showRanking() }, '🏆 Ranking global'),
+      h('button', { class: 'btn ghost', onclick: () => showProfile(ctx) }, '👤 Meu perfil'))
   );
+}
+
+function profileChip() {
+  const p = localProfile();
+  const name = p?.name || getPlayerName();
+  return h('button', { class: 'profile-chip', onclick: () => showProfile(ctx), title: 'Meu perfil' },
+    h('span', { class: 'pc-avatar' }, p?.avatar || getAvatar()), name ? h('span', {}, name) : h('span', {}, 'Criar perfil'));
 }
 
 // ---------- Introdução do modo ----------
@@ -109,6 +122,7 @@ function showIntro(m) {
       h('p', { class: 'badge ' + m.category }, m.category === 'classico' ? 'Modo clássico' : 'Modo novo'),
       h('ul', { class: 'rules' }, m.rules.map((r) => h('li', {}, r))),
       optEl,
+      m.globalRanking ? h('p', { class: 'hint center' }, '🌍 Este modo vale para o ranking global (com o servidor ligado).') : '',
       h(
         'div',
         { class: 'row-actions center' },
@@ -124,7 +138,8 @@ function topBar(m) {
 }
 
 // ---------- Partida ----------
-function play(m, opts = {}) {
+function play(m, baseOpts = {}) {
+  const opts = { ...baseOpts };
   const root = h('div', { class: `game ${m.id}` });
   screen(topBar(m), root);
   let finished = false;
@@ -137,10 +152,34 @@ function play(m, opts = {}) {
   };
   // pequena espera para a interface aparecer antes de gerar a grade
   root.append(h('p', { class: 'loading' }, 'Preparando…'));
-  setTimeout(() => {
+  (async () => {
+    // modos com ranking global pedem a grade ao servidor (se ele não responder, joga local)
+    if (m.prepare) opts.online = await Promise.race([m.prepare(opts), new Promise((r) => setTimeout(() => r(null), 5000))]);
+    await new Promise((r) => setTimeout(r, 30));
+    if (!root.isConnected) return;
     root.replaceChildren();
     cleanup = m.start(root, api, opts) || null;
-  }, 30);
+  })();
+}
+
+// Envia a partida solo ao servidor, que confere as palavras e devolve a posição no ranking global.
+function onlineResult(result, m) {
+  const el = h('div', { class: 'global-pos' }, h('p', { class: 'muted' }, '🌍 Enviando para o ranking global…'));
+  finishOnline(result.online.ticket, result.online.palavras)
+    .then((r) => {
+      if (!r.ok) { el.replaceChildren(h('p', { class: 'notice' }, r.erro || 'A partida não entrou no ranking global.')); return; }
+      if (!r.ranked) { el.replaceChildren(h('p', { class: 'muted' }, '🌍 Partida de treino: não conta no ranking global.')); return; }
+      const pos = r.posicao;
+      el.replaceChildren(pos
+        ? h('div', { class: 'pos-cards' },
+            h('p', {}, '🌍 Ranking global (conferido pelo servidor: ', h('strong', {}, `${r.score} pts`), ')'),
+            h('div', { class: 'pos-row' }, (m.id === 'novo-diario' ? [['hoje', 'Desafio de hoje']] : [['hoje', 'Hoje'], ['semana', 'Semana'], ['sempre', 'Sempre']]).map(([k, label]) =>
+              h('div', { class: 'pos-card' }, h('strong', {}, pos[k] ? `${pos[k]}º` : '—'), h('span', {}, label)))),
+            h('button', { class: 'btn ghost small', onclick: () => showRanking(m) }, 'Ver ranking global'))
+        : h('p', { class: 'muted' }, '🌍 Faça pelo menos 1 ponto para entrar no ranking global.'));
+    })
+    .catch((e) => el.replaceChildren(h('p', { class: 'muted' }, `🌍 Ranking global indisponível (${e.message}).`)));
+  return el;
 }
 
 function showResult(m, opts, result) {
@@ -164,6 +203,7 @@ function showResult(m, opts, result) {
           e.preventDefault();
           const name = nameInput.value.trim() || 'Jogador';
           setPlayerName(name);
+          saveIdentity(name, getAvatar()); // mantém o nome do perfil global igual
           const res = addScore(rankId, { name, score: result.score, detail: result.detail || null });
           saveArea.replaceChildren(h('p', { class: 'saved' }, res ? `Salvo! Você está em ${res.pos}º lugar.` : 'Salvo!'));
           renderRank(res?.id);
@@ -185,9 +225,10 @@ function showResult(m, opts, result) {
       h('h2', {}, 'Fim de partida'),
       h('div', { class: 'big-score' }, result.score, h('small', {}, ' pontos')),
       h('dl', { class: 'summary' }, (result.summary || []).flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
+      result.online ? onlineResult(result, m) : '',
       saveArea,
-      result.extra || null,
-      h('h3', {}, 'Ranking — ' + m.name + (m.options ? ` (${m.options.choices.find(([v]) => v === opts[m.options.key])?.[1]})` : '')),
+      result.extra || '',
+      h('h3', {}, 'Ranking neste aparelho — ' + m.name + (m.options ? ` (${m.options.choices.find(([v]) => v === opts[m.options.key])?.[1]})` : '')),
       rankArea,
       h(
         'div',
@@ -226,7 +267,8 @@ function rankingTable(rankId, highlightId) {
   );
 }
 
-function showRanking(selected) {
+// Ranking deste aparelho (localStorage), mostrado na aba "Neste aparelho".
+function renderLocalRanking(container, selected) {
   const all = [...multiRankingModes, ...CLASSICOS, ...NOVOS];
   selected ||= all.find((m) => rankingVariants(m).some(([id]) => getRanking(id).length)) || all[0];
   const tabs = h('div', { class: 'tabs' });
@@ -239,14 +281,14 @@ function showRanking(selected) {
         h(
           'div',
           { class: 'rank-block' },
-          label ? h('h3', {}, label) : null,
+          label ? h('h3', {}, label) : '',
           rankingTable(id),
           getRanking(id).length
             ? h('button', {
                 class: 'btn ghost small',
                 onclick: () => { if (confirm('Apagar este ranking?')) { clearRanking(id); select(m); } },
               }, 'Limpar ranking')
-            : null
+            : ''
         )
       )
     );
@@ -255,12 +297,15 @@ function showRanking(selected) {
   const group = (title, list) =>
     h('div', { class: 'tab-group' }, h('span', { class: 'tab-title' }, title), list.map((m) => h('button', { class: `chip ${m.category}`, 'data-id': m.id, onclick: () => select(m) }, `${m.icon} ${m.name}`)));
   tabs.append(group('Em grupo', multiRankingModes), group('Clássicos', CLASSICOS), group('Novos', NOVOS));
-
-  screen(
-    h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: showMenu }, '← Menu'), h('span', {}, '🏆 Ranking')),
-    h('div', { class: 'card' }, h('p', { class: 'section-sub' }, 'Suas maiores pontuações por partida em cada modo (top 10, salvo neste aparelho). Em grupo, o pódio de cada partida aparece no fim do jogo.'), tabs, body)
-  );
+  container.replaceChildren(h('p', { class: 'section-sub' }, 'Suas 10 maiores pontuações por partida em cada modo, salvas só neste aparelho.'), tabs, body);
   select(selected);
+}
+
+const ctx = { screen, showMenu, renderLocal: (el) => renderLocalRanking(el) };
+
+function showRanking(selected) {
+  const globalId = selected && (selected.globalRanking ? selected.id : null);
+  return showRankingScreen(ctx, globalId ? { mode: globalId, tab: 'global' } : selected ? { tab: 'local' } : {});
 }
 
 // ---------- Início ----------
@@ -273,6 +318,7 @@ function hasSession() {
   try {
     await loadDict();
     initMulti({ screen, setCleanup, showMenu });
+    serverStatus(); // já descobre se há servidor (ranking global, IA)
     if (tvFromUrl() != null) openTv();
     else if (roomCodeFromUrl() || hasSession()) openMulti();
     else showMenu();

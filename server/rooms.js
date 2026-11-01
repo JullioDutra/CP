@@ -6,8 +6,9 @@ const CODE_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ'; // sem vogais: códigos não formam
 const IDLE_MS = 10 * 60 * 1000;
 
 export class RoomManager {
-  constructor({ roomOptions = {}, verifier = null } = {}) {
+  constructor({ roomOptions = {}, verifier = null, store = null } = {}) {
     this.verifier = verifier;
+    this.store = store;
     this.rooms = new Map();
     this.sockets = new Map(); // code -> Map(playerId -> send)
     this.roomOptions = roomOptions;
@@ -23,10 +24,27 @@ export class RoomManager {
 
   createRoom() {
     const code = this.newCode();
-    const room = new Room(code, { verifier: this.verifier, ...this.roomOptions, onChange: (r) => this.broadcast(r) });
+    const room = new Room(code, { verifier: this.verifier, ...this.roomOptions, onChange: (r) => this.broadcast(r), onFinal: (r) => this.record(r) });
     this.rooms.set(code, room);
     this.sockets.set(code, new Map());
     return room;
+  }
+
+  // grava a partida encerrada no ranking global
+  record(room) {
+    if (!this.store) return;
+    try {
+      const summary = room.matchSummary();
+      if (summary.players.length) this.store.recordMatch(summary);
+    } catch (e) {
+      console.error('[ranking] não foi possível gravar a partida:', e.message);
+    }
+  }
+
+  // perfil (sem login) enviado pelo navegador: { name, avatar, profile: token }
+  withProfile(m) {
+    const prof = this.store?.profileByToken(m.profile);
+    return { name: m.name, avatar: m.avatar, profileId: prof?.id || null };
   }
 
   broadcast(room) {
@@ -63,12 +81,12 @@ export class RoomManager {
     const actions = {
       create: (m) => {
         const r = this.createRoom();
-        attach(r, r.addPlayer(m));
+        attach(r, r.addPlayer(this.withProfile(m)));
       },
       join: (m) => {
         const r = this.rooms.get(String(m.code || '').toUpperCase().trim());
         if (!r) throw new Error('Sala não encontrada. Confira o código.');
-        attach(r, r.addPlayer(m));
+        attach(r, r.addPlayer(this.withProfile(m)));
       },
       // telão: entra como espectador (não joga, só mostra)
       watch: (m) => {

@@ -8,7 +8,8 @@ de cadastro: é só colocar o nome, escolher um avatar e criar a sala.
 
 ```bash
 npm install
-npm start            # servidor do jogo + multijogador em http://localhost:8080
+npm start            # servidor do jogo + multijogador + ranking global em http://localhost:8080
+                     # (precisa de Node 22.13 ou mais novo)
 ```
 
 O terminal também mostra o endereço para **celulares na mesma rede Wi-Fi**
@@ -94,6 +95,20 @@ com as palavras e os pontos guardados.
 
 Os modos ficam separados no menu e no código.
 
+## 🌍 Ranking global e perfil (sem login)
+- **Perfil sem cadastro:** nome + avatar. O aparelho guarda um código secreto que junta as suas partidas.
+  Para usar o mesmo perfil em outro aparelho: **Meu perfil → Copiar código** e colar no outro aparelho.
+- **Ranking global** (com o servidor ligado): maiores pontuações **por partida**, uma linha por pessoa
+  (a melhor partida), filtrando por **modo**, **tamanho da grade/nível** e **período** (Hoje, Semana, Sempre; fuso de Brasília).
+  - **Em grupo:** todos os modos; as partidas são gravadas pelo servidor ao fim do jogo. Também tem o ranking de **mais vitórias**
+    (só partidas com 2+ pessoas). No pódio aparece a sua posição na semana.
+  - **Solo:** Grade Relâmpago (4×4, 5×5, 6×6) e Desafio do Dia. O servidor entrega a grade, controla o tempo e
+    **recalcula os pontos** a partir das palavras enviadas, então não dá para trapacear editando a pontuação. No Desafio do Dia
+    só a 1ª partida de cada pessoa vale.
+  - Os outros modos solo continuam com o ranking **deste aparelho** (aba "📱 Neste aparelho").
+- **Meu perfil:** partidas, vitórias, melhor partida, média, palavras achadas e únicas, maior palavra, modo favorito e histórico.
+- Os dados ficam num banco SQLite em `data/runtime/trama.db` (SQLite embutido no Node 22.13+, nada para instalar).
+
 ## Modos solo
 
 ### Modos Clássicos (`js/modes/classicos/`)
@@ -142,6 +157,9 @@ js/multi/                  telas e conexão do multijogador (inclui telão, corr
 server/                    servidor Node: arquivos + salas em tempo real (WebSocket)
 server/games/              regras de cada jogo em grupo (grade, caça-palavras, sudoku)
 server/ai.js               verificador de palavras com IA
+server/store.js            banco (SQLite): perfis, partidas, rankings, tickets das partidas solo
+server/api.js              rotas /api (perfil, ranking, partidas solo verificadas, IA, QR)
+js/screens/global.js       telas de ranking global e perfil
 scripts/verificar-palavras.mjs   confere palavras no dicionário/IA
 js/modes/classicos/        modos clássicos
 js/modes/novos/            modos novos

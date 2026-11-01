@@ -1,31 +1,16 @@
 // MODO NOVO — Desafio do Dia
 // Mesma grade para todos os jogadores no mesmo dia, com casas bônus. Uma tentativa válida por dia.
 import { h, createTimer, fmtTime, toast, hud } from '../../core/ui.js';
-import { createRng, seedFromString, todayKey } from '../../core/rng.js';
-import { makeGrid, wordPoints } from '../../core/letters.js';
+import { todayKey } from '../../core/rng.js';
+import { dailyPuzzle, dailyPoints } from '../../core/solo.js';
 import { createWordGrid } from '../../core/wordgrid.js';
 import { foundPanel, missedWords, confirmWord } from '../shared-wordlist.js';
+import { startOnline } from '../../core/online-solo.js';
 
 const TIME = 120;
 const PLAYED_KEY = 'trama.daily.played';
 
-export function dailyPuzzle(day = todayKey()) {
-  const rng = createRng(seedFromString(`trama-${day}`));
-  const { grid, words } = makeGrid(rng, 4, { minWords: 40 });
-  const cells = rng.shuffle([...Array(16).keys()]);
-  // ×2 na palavra e ×3 na palavra
-  const bonus = { [cells[0]]: '×2', [cells[1]]: '×3' };
-  return { grid, words, bonus };
-}
-
-export function dailyPoints(word, path, bonus) {
-  let mult = 1;
-  for (const i of path || []) {
-    if (bonus[i] === '×2') mult *= 2;
-    if (bonus[i] === '×3') mult *= 3;
-  }
-  return wordPoints(word) * mult;
-}
+export { dailyPuzzle, dailyPoints };
 
 function playedToday() {
   try {
@@ -46,12 +31,17 @@ export default {
     'Só a primeira partida do dia vale para o ranking — depois disso é treino.',
     `${TIME / 60} minutos.`,
   ],
-  start(root, api) {
-    const day = todayKey();
+  globalRanking: true,
+  prepare: () => startOnline('novo-diario', { dia: todayKey() }),
+  start(root, api, opts = {}) {
+    const online = opts.online;
+    const day = online?.variante || todayKey();
     const prev = playedToday();
-    const practice = !!prev;
+    // com servidor, quem decide se vale é o ranking global (1 partida oficial por perfil por dia)
+    const practice = online ? !online.ranked : !!prev;
     const { grid, words, bonus } = dailyPuzzle(day);
     const found = new Set();
+    const paths = {};
     let score = 0;
 
     const top = hud([['time', 'Tempo'], ['score', 'Pontos'], ['count', 'Palavras']]);
@@ -70,6 +60,7 @@ export default {
         if (!v.ok) return { ok: false };
         if (found.has(w)) return { dup: true };
         found.add(w);
+        paths[w] = path;
         const pts = dailyPoints(w, path, bonus);
         score += pts;
         panel.add(w, pts, v.ai);
@@ -101,12 +92,13 @@ export default {
         detail: day,
         summary: [['Dia', day.split('-').reverse().join('/')], ['Palavras', `${found.size}/${words.length}`], ['Partida', practice ? 'Treino (não conta)' : 'Oficial']],
         extra: missedWords(words, found),
+        online: online && { ticket: online.ticket, palavras: [...found].map((w) => ({ w, path: paths[w] })) },
       });
     }
 
     root.append(
       top.el,
-      practice ? h('p', { class: 'notice' }, `Você já jogou hoje (${prev.score} pts). Esta partida é só treino.`) : '',
+      practice ? h('p', { class: 'notice' }, prev ? `Você já jogou hoje (${prev.score} pts). Esta partida é só treino.` : 'Você já jogou o desafio de hoje. Esta partida é só treino.') : '',
       h('div', { class: 'play-area' }, wg.el, panel.el),
       h('div', { class: 'row-actions' }, h('button', { class: 'btn ghost', onclick: finish }, 'Encerrar partida'))
     );

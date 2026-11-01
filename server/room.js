@@ -25,7 +25,8 @@ export function cleanName(raw) {
 }
 
 export class Room {
-  constructor(code, { now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, onChange = () => {}, seed, verifier = null } = {}) {
+  constructor(code, { now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, onChange = () => {}, onFinal = () => {}, seed, verifier = null } = {}) {
+    this.onFinal = onFinal;
     this.code = code;
     this.now = now;
     this.setTimer = setTimer;
@@ -53,7 +54,7 @@ export class Room {
   get game() { return GAMES[this.mode.game]; }
 
   // ---------- jogadores ----------
-  addPlayer({ name, avatar }) {
+  addPlayer({ name, avatar, profileId = null }) {
     if (this.players.size >= MAX_PLAYERS) throw new Error('Sala cheia');
     let clean = cleanName(name);
     const taken = new Set([...this.players.values()].map((p) => p.name.toLowerCase()));
@@ -69,6 +70,7 @@ export class Room {
       rs: null, // estado do jogador na rodada
       acts: [],
       joinOrder: this.order++,
+      profileId,
     };
     this.players.set(p.id, p);
     if (this.rd && this.phase === 'playing') this.game.initPlayer(p, this);
@@ -222,6 +224,7 @@ export class Room {
       this.phase = this.round >= this.options.rounds ? 'final' : 'reveal';
       this.endsAt = null;
       this.closing = false;
+      if (this.phase === 'final') this.onFinal(this);
       this.touch();
     };
     if (this.pending.size) Promise.allSettled([...this.pending]).then(finalize);
@@ -240,6 +243,33 @@ export class Room {
   touch() {
     this.lastActivity = this.now();
     this.onChange(this);
+  }
+
+  // Resumo da partida para o ranking global (posições com empate dividem o lugar).
+  matchSummary() {
+    const mode = this.mode;
+    const variant = mode.game === 'grade' ? String(this.options.size) : mode.game === 'sudoku' ? this.options.difficulty : '';
+    const standings = this.standings();
+    const players = standings.map((st) => {
+      const p = this.players.get(st.id);
+      let words = 0, unique = 0, longest = null;
+      for (const r of this.rounds) {
+        const d = r.players?.[st.id];
+        if (!d) continue;
+        if (r.type === 'grade') {
+          words += d.words.length;
+          unique += d.unique;
+          for (const w of d.words) if (!longest || w.w.length > longest.length) longest = w.w;
+        } else if (r.type === 'wordsearch') {
+          words += d.found.length;
+        } else if (r.type === 'sudoku') {
+          words += d.filled;
+        }
+      }
+      const place = standings.findIndex((x) => x.total === st.total) + 1;
+      return { profileId: p.profileId, name: p.name, avatar: p.avatar, score: st.total, place, words, unique, longest };
+    });
+    return { mode: this.options.mode, variant, kind: 'multi', room: this.code, players };
   }
 
   // ---------- estado enviado a cada jogador / telão ----------

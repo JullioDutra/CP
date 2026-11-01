@@ -1,4 +1,4 @@
-// Servidor do Trama: entrega os arquivos do jogo e cuida das salas em tempo real (WebSocket).
+// Servidor do Trama: entrega os arquivos do jogo, a API (/api/*) e as salas em tempo real (WebSocket).
 // Uso: npm start   →   http://localhost:8080
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
@@ -7,10 +7,11 @@ import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import QRCode from 'qrcode';
 import { setDictWords } from '../js/core/dict.js';
 import { RoomManager } from './rooms.js';
 import { createVerifier, loadDotEnv } from './ai.js';
+import { createStore } from './store.js';
+import { createApi } from './api.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 loadDotEnv(path.join(ROOT, '.env'));
@@ -26,50 +27,15 @@ const verifier = createVerifier({
   cacheFile: path.join(DATA_DIR, 'ia-cache.json'),
   learnedFile: path.join(DATA_DIR, 'aprendidas.txt'),
 });
-
-// limite simples por IP para a API de verificação
-const apiHits = new Map();
-function allowApi(ip, max = 30) {
-  const t = Date.now();
-  const list = (apiHits.get(ip) || []).filter((x) => t - x < 60000);
-  if (list.length >= max) return false;
-  list.push(t);
-  apiHits.set(ip, list);
-  return true;
-}
-
-const json = (res, code, obj) => {
-  res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-  res.end(JSON.stringify(obj));
-};
-
-async function api(url, req, res) {
-  const p = url.pathname;
-  if (p === '/api/status') return json(res, 200, { ia: verifier.enabled, modelo: verifier.enabled ? verifier.model : null });
-  if (p === '/api/aprendidas') {
-    res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache' });
-    return res.end(verifier.learned().join('\n'));
-  }
-  if (p.startsWith('/api/palavra/')) {
-    if (!allowApi(req.socket.remoteAddress)) return json(res, 429, { ok: false, motivo: 'Muitas verificações, espere um pouco' });
-    const word = decodeURIComponent(p.slice('/api/palavra/'.length));
-    return json(res, 200, await verifier.verify(word));
-  }
-  if (p === '/api/qr') {
-    const data = String(url.searchParams.get('d') || '').slice(0, 300);
-    const svg = await QRCode.toString(data, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
-    res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=3600' });
-    return res.end(svg);
-  }
-  return json(res, 404, { erro: 'não encontrado' });
-}
+const store = createStore(process.env.TRAMA_DB || path.join(DATA_DIR, 'trama.db'));
+const api = createApi({ verifier, store });
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x');
-    let rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'index.html';
     if (url.pathname === '/healthz') { res.end('ok'); return; }
-    if (url.pathname.startsWith('/api/')) { await api(url, req, res); return; }
+    if (url.pathname.startsWith('/api/')) { await api(req, res, url); return; }
+    let rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'index.html';
     if (!PUBLIC.some((p) => rel === p || (p.endsWith('/') && rel.startsWith(p)))) rel = 'index.html';
     const file = path.join(ROOT, rel);
     if (!file.startsWith(ROOT + path.sep)) throw new Error('caminho inválido');
@@ -82,7 +48,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-const manager = new RoomManager({ verifier });
+const manager = new RoomManager({ verifier, store });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
 
 wss.on('connection', (ws) => {

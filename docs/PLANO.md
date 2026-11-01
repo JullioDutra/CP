@@ -21,7 +21,10 @@ sorteia a grade, controla o relógio, valida as palavras e guarda os rankings.
   controle), sons, **palavras comuns** (35 mil, com verbos conjugados) e **IA verificadora** de palavras.
 - ✅ **Ajustes pós-Fase 2:** palavras repetidas **valem pontos** (só aparecem no "tanque" de únicas × repetidas);
   Grade Amigável virou **Grade Bônus** (casas ×2/×3); **grade 6×6** (solo e em grupo); novo visual claro e suave.
-- ⏭️ Próximo: **Fase 3** (ranking global e perfis sem login).
+- ✅ **Fase 3:** ranking global (por partida, por modo/variante, Hoje/Semana/Sempre, mais vitórias),
+  perfis sem login (nome + avatar + código para levar a outro aparelho), estatísticas e histórico,
+  partidas solo verificadas pelo servidor (Grade Relâmpago e Desafio do Dia).
+- ⏭️ Próximo: **Fase 4** (Arena Pública, ligas e temporadas, Arena Sobrevivência e Times).
 
 ---
 
@@ -169,12 +172,14 @@ rodar no servidor de qualquer jeito.
 - [x] **IA verificadora** (qualquer API compatível com OpenAI, como FreeLLM, Groq ou OpenRouter): confere palavras
       fora do dicionário, com cache, limite de uso e script `npm run verificar`.
 
-### Fase 3 — Ranking global e perfis (1 semana)
-- [ ] Gravar cada partida no Postgres.
-- [ ] Página de ranking: **Maior pontuação por partida**, Hoje, Semana e Sempre, por modo.
-- [ ] Perfil simples: nome + avatar guardados no aparelho, sem login.
-- [ ] Estatísticas pessoais: maior palavra, média de pontos, vitórias.
-- [ ] Desafio do Dia Global com ranking mundial do dia.
+### Fase 3 — Ranking global e perfis ✅
+- [x] Gravar cada partida em grupo no banco (SQLite embutido; interface pronta para trocar por Postgres).
+- [x] Ranking global: **maior pontuação por partida** (1 linha por pessoa), Hoje, Semana (fuso de Brasília) e Sempre,
+      por modo e por tamanho de grade/nível; ranking de **mais vitórias** em grupo.
+- [x] Perfil **sem login**: nome + avatar; código secreto para usar o perfil em outro aparelho.
+- [x] Estatísticas: partidas, vitórias, melhor partida, média, palavras, únicas, maior palavra, modo favorito, histórico.
+- [x] Partidas solo verificadas: o servidor entrega a grade (ticket), confere o tempo e recalcula os pontos.
+- [x] Desafio do Dia no ranking global (1 partida oficial por pessoa por dia).
 
 ### Fase 4 — Competitivo de verdade (2 semanas)
 - [ ] **Arena Pública** com fila automática (2–8 jogadores e início em 20 s ou com a sala cheia).

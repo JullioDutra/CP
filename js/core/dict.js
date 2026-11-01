@@ -54,13 +54,14 @@ export function setDictWords(list, common = []) {
 }
 
 // Acrescenta palavras confirmadas (ex.: pela IA). Retorna quantas eram novas.
+// Elas passam a VALER (isWord), mas não entram em allWords(): assim o sorteio das
+// grades depende só dos arquivos de dicionário e fica igual no navegador e no servidor.
 export function addWords(list) {
   let n = 0;
   for (const raw of list) {
     const w = normalize(raw);
     if (isPlayable(w) && !wordSet.has(w)) {
       wordSet.add(w);
-      words.push(w);
       n++;
     }
   }
@@ -70,4 +71,4 @@ export function addWords(list) {
 export const isWord = (w) => wordSet.has(w);
 export const isCommon = (w) => commonRank.has(w);
 export const commonRankOf = (w) => commonRank.get(w) ?? Infinity;
-export const allWords = () => words;
+export const allWords = () => words; // só o dicionário base (sem as aprendidas)
