@@ -8,13 +8,17 @@ import cacapalavras from './modes/classicos/cacapalavras.js';
 import sudoku from './modes/classicos/sudoku.js';
 import sobrevivencia from './modes/novos/sobrevivencia.js';
 import diario from './modes/novos/diario.js';
+import { initMulti, openMulti, roomCodeFromUrl, multiRankingModes } from './multi/multi.js';
 
 const CLASSICOS = [grade, cacapalavras, sudoku];
 const NOVOS = [sobrevivencia, diario];
-const ALL = [...CLASSICOS, ...NOVOS];
 
 const app = document.getElementById('app');
 let cleanup = null;
+
+function setCleanup(fn) {
+  cleanup = fn;
+}
 
 function screen(...children) {
   cleanup?.();
@@ -46,15 +50,27 @@ function showMenu() {
     h('header', { class: 'brand' }, h('h1', {}, 'Trama'), h('p', {}, 'Jogos de letras e lógica')),
     h(
       'section',
+      { class: 'mode-section multi' },
+      h('h2', {}, '👥 Jogar com amigos ', h('span', { class: 'tag live' }, 'ao vivo')),
+      h('p', { class: 'section-sub' }, 'Todos na mesma grade, ao mesmo tempo. Sem cadastro: coloque seu nome, escolha um avatar e crie a sala.'),
+      h(
+        'div',
+        { class: 'multi-cta' },
+        h('button', { class: 'btn big', onclick: () => openMulti() }, 'Criar ou entrar numa sala'),
+        h('div', { class: 'multi-modes' }, multiRankingModes.map((m) => h('span', { class: `pill ${m.category}` }, `${m.icon} ${m.name} · ${m.category === 'classico' ? 'clássico' : 'novo'}`)))
+      )
+    ),
+    h(
+      'section',
       { class: 'mode-section' },
-      h('h2', {}, 'Modos Clássicos'),
+      h('h2', {}, 'Modos Clássicos · solo'),
       h('p', { class: 'section-sub' }, 'Os formatos tradicionais do gênero, com regras conhecidas.'),
       h('div', { class: 'mode-grid' }, CLASSICOS.map(modeCard))
     ),
     h(
       'section',
       { class: 'mode-section novos' },
-      h('h2', {}, 'Modos Novos ', h('span', { class: 'tag' }, 'exclusivos Trama')),
+      h('h2', {}, 'Modos Novos · solo ', h('span', { class: 'tag' }, 'exclusivos Trama')),
       h('p', { class: 'section-sub' }, 'Variações criadas para o Trama, com mecânicas diferentes.'),
       h('div', { class: 'mode-grid' }, NOVOS.map(modeCard))
     ),
@@ -207,7 +223,9 @@ function rankingTable(rankId, highlightId) {
   );
 }
 
-function showRanking(selected = ALL[0]) {
+function showRanking(selected) {
+  const all = [...multiRankingModes, ...CLASSICOS, ...NOVOS];
+  selected ||= all.find((m) => rankingVariants(m).some(([id]) => getRanking(id).length)) || all[0];
   const tabs = h('div', { class: 'tabs' });
   const body = h('div', { class: 'ranking-body' });
 
@@ -233,21 +251,27 @@ function showRanking(selected = ALL[0]) {
 
   const group = (title, list) =>
     h('div', { class: 'tab-group' }, h('span', { class: 'tab-title' }, title), list.map((m) => h('button', { class: `chip ${m.category}`, 'data-id': m.id, onclick: () => select(m) }, `${m.icon} ${m.name}`)));
-  tabs.append(group('Clássicos', CLASSICOS), group('Novos', NOVOS));
+  tabs.append(group('Em grupo', multiRankingModes), group('Clássicos', CLASSICOS), group('Novos', NOVOS));
 
   screen(
     h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: showMenu }, '← Menu'), h('span', {}, '🏆 Ranking')),
-    h('div', { class: 'card' }, h('p', { class: 'section-sub' }, 'Maiores pontuações por partida em cada modo (top 10, salvo neste aparelho).'), tabs, body)
+    h('div', { class: 'card' }, h('p', { class: 'section-sub' }, 'Suas maiores pontuações por partida em cada modo (top 10, salvo neste aparelho). Em grupo, o pódio de cada partida aparece no fim do jogo.'), tabs, body)
   );
   select(selected);
 }
 
 // ---------- Início ----------
+function hasSession() {
+  try { return !!sessionStorage.getItem('trama.session'); } catch { return false; }
+}
+
 (async function init() {
   app.replaceChildren(h('p', { class: 'loading' }, 'Carregando dicionário…'));
   try {
     await loadDict();
-    showMenu();
+    initMulti({ screen, setCleanup, showMenu });
+    if (roomCodeFromUrl() || hasSession()) openMulti();
+    else showMenu();
   } catch (e) {
     app.replaceChildren(
       h('div', { class: 'card' }, h('h2', {}, 'Erro ao carregar'), h('p', {}, e.message), h('p', {}, 'Abra o jogo por um servidor local (veja o README), não direto pelo arquivo.'))

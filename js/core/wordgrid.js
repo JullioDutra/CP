@@ -1,6 +1,6 @@
 // Componente de grade de letras: arrastar, tocar peça por peça ou digitar no teclado.
 import { h } from './ui.js';
-import { isAdjacent, findPath } from './letters.js';
+import { isAdjacent, findPath, POINTS_HINT } from './letters.js';
 
 export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
   let grid = letters.slice();
@@ -55,8 +55,8 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
     typed = '';
     paint();
     if (w.length === 0) return;
-    const res = onSubmit(w, p);
-    flash(p, res?.ok ? 'good' : res?.dup ? 'dup' : 'bad');
+    // onSubmit pode responder na hora ou devolver uma Promise (multijogador)
+    Promise.resolve(onSubmit(w, p)).then((res) => flash(p, res?.ok ? 'good' : res?.dup ? 'dup' : 'bad'));
   }
 
   function tileAt(x, y) {
@@ -149,7 +149,7 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
   renderTiles();
 
   return {
-    el: h('div', { class: 'wordgrid' }, current, board, actions),
+    el: h('div', { class: 'wordgrid' }, current, board, actions, h('p', { class: 'points-hint' }, 'Pontos: ' + POINTS_HINT)),
     get letters() { return grid; },
     setLetters(next, changed = []) {
       grid = next.slice();

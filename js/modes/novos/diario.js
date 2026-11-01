@@ -105,7 +105,7 @@ export default {
 
     root.append(
       top.el,
-      practice ? h('p', { class: 'notice' }, `Você já jogou hoje (${prev.score} pts). Esta partida é só treino.`) : null,
+      practice ? h('p', { class: 'notice' }, `Você já jogou hoje (${prev.score} pts). Esta partida é só treino.`) : '',
       h('div', { class: 'play-area' }, wg.el, panel.el),
       h('div', { class: 'row-actions' }, h('button', { class: 'btn ghost', onclick: finish }, 'Encerrar partida'))
     );

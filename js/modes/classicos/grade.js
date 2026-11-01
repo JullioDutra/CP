@@ -16,7 +16,7 @@ export default {
   rules: [
     'Ligue letras vizinhas (horizontal, vertical ou diagonal) para formar palavras de 3+ letras.',
     'Cada peça só pode ser usada uma vez por palavra.',
-    'Pontos: 3 letras = 1 · 4 = 2 · 5 = 3 · 6 = 5 · 7 = 8 · 8 = 11 · 9 = 15.',
+    'Pontos (mínimo 3 letras): 3 = 1 · 4 = 2 · 5 = 4 · 6 = 7 · 7 = 11 · 8 = 16 · 9 = 22 · cada letra a mais +7.',
     'Arraste o dedo/mouse, toque peça por peça ou digite no teclado e aperte Enter.',
   ],
   start(root, api) {

@@ -59,7 +59,7 @@ export function findPath(grid, size, word) {
 }
 
 // Lista todas as palavras do dicionário que existem na grade.
-export function solve(grid, size, maxLen = 9) {
+export function solve(grid, size, maxLen = 12) {
   const count = new Uint8Array(26);
   for (const l of grid) count[l.charCodeAt(0) - 97]++;
   const out = [];
@@ -91,6 +91,13 @@ export function makeGrid(rng, size, { minWords = 20, tries = 60 } = {}) {
   return best;
 }
 
-// Pontuação por tamanho da palavra (tabela própria do Trama).
-const POINTS = [0, 0, 0, 1, 2, 3, 5, 8, 11, 15];
-export const wordPoints = (w) => POINTS[Math.min(w.length, 9)] + Math.max(0, w.length - 9) * 4;
+// Pontuação por tamanho da palavra: cresce bem mais rápido que o tamanho,
+// para valer a pena procurar palavras longas. Mínimo de 3 letras.
+export const MIN_LETTERS = 3;
+const POINTS = [0, 0, 0, 1, 2, 4, 7, 11, 16, 22];
+export const wordPoints = (w) => {
+  const n = typeof w === 'number' ? w : w.length;
+  if (n < MIN_LETTERS) return 0;
+  return n <= 9 ? POINTS[n] : POINTS[9] + (n - 9) * 7;
+};
+export const POINTS_HINT = '3=1 · 4=2 · 5=4 · 6=7 · 7=11 · 8=16 · 9=22 · +7 por letra extra';

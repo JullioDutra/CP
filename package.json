@@ -5,8 +5,11 @@
   "description": "Trama — jogos de letras e lógica com ranking por partida",
   "type": "module",
   "scripts": {
-    "start": "python3 -m http.server 8080",
-    "test": "node tests/letters.test.mjs && node tests/modes.test.mjs",
+    "start": "node server/index.js",
+    "test": "node tests/letters.test.mjs && node tests/modes.test.mjs && node tests/multi.test.mjs",
     "build:dict": "node data/build-dict.cjs palavras.txt data/palavras.txt"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   }
 }

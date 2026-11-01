@@ -8,6 +8,17 @@ Hoje o Trama roda só no navegador. A grade é gerada no aparelho e o ranking fi
 `localStorage`. Para várias pessoas jogarem juntas precisamos de um **servidor**: ele
 sorteia a grade, controla o relógio, valida as palavras e guarda os rankings.
 
+## Decisões tomadas
+- **Sem acento** nas palavras: A vale por Á/Ã/Â e C por Ç, o que dá mais combinações. O dicionário foi ampliado para 3–12 letras (cerca de 216 mil palavras).
+- **Sem login:** só nome + avatar, depois criar ou entrar na sala.
+- **Hospedagem por último**, provavelmente na **Vercel** (ver a seção 8).
+
+## Status
+- ✅ **Fase 0:** pontuação nova, mínimo de 3 letras e tabela de pontos visível na partida.
+- ✅ **Fase 1:** servidor, salas privadas com código/link, saguão, Grade em Grupo (clássico) e
+  Grade Amigável (novo), placar ao vivo, revelação, pódio, revanche e reconexão.
+- ⏭️ Próximo: **Fase 2** (Caça-Palavras Corrida, Sudoku Duelo, Modo Telão com QR code e sons).
+
 ---
 
 ## 1. Pontuação nova (palavras grandes valem muito mais)
@@ -90,7 +101,7 @@ Servidor Node.js  ──────────────  Banco Postgres
  • dicionário carregado
 ```
 
-**Recomendação:** **Node.js + Socket.IO** (reconecta sozinho e organiza as salas) e
+**Recomendação:** **Node.js + WebSocket** (`ws`, com reconexão própria) e
 **Postgres** (Supabase ou Neon, ambos com plano grátis). Um único serviço publicado no
 Render, Railway ou Fly.io serve o jogo, o tempo real e a API.
 
@@ -131,21 +142,19 @@ rodar no servidor de qualquer jeito.
 
 ## 5. Fases de entrega
 
-### Fase 0 — Ajustes rápidos (1–2 dias)
-- [ ] Nova tabela de pontos (seção 1) em todos os modos, com mínimo de 3 letras explícito na interface.
-- [ ] Mostrar a tabela de pontos na tela da partida (um "3=1 · 4=2 · 5=4 …" discreto).
-- [ ] Dicionário em duas camadas: a lista grande para **aceitar** palavras e uma lista de
-      palavras comuns para **gerar grades** e mostrar as "palavras perdidas" (evita palavras raras como "escoucear").
-- [ ] Mostrar palavras com acento quando existir a forma acentuada (SERTÃO em vez de SERTAO).
+### Fase 0 — Ajustes rápidos ✅
+- [x] Nova tabela de pontos (seção 1) em todos os modos, com mínimo de 3 letras explícito na interface.
+- [x] Mostrar a tabela de pontos na tela da partida.
+- [x] Dicionário ampliado para 3–12 letras, sem acento (mais combinações).
+- [ ] (opcional) Lista de palavras comuns só para destacar as "palavras perdidas" mais conhecidas.
 
-### Fase 1 — Servidor e salas privadas (1–2 semanas)
-- [ ] Projeto `server/` (Node + Socket.IO) que serve os arquivos estáticos atuais.
-- [ ] Código compartilhado entre cliente e servidor: grade, pontuação, dicionário e RNG (`js/core/`).
-- [ ] Criar e entrar em sala por código ou link, saguão, "Pronto" e anfitrião.
-- [ ] Modo **Grade Relâmpago em Grupo** completo: rodadas, relógio do servidor, validação,
-      regra de repetidas anuladas, placar ao vivo, revelação e pódio.
-- [ ] Reconexão: quem cair volta para a mesma sala com os pontos guardados.
-- **Pronto quando:** 4 pessoas em aparelhos diferentes jogam 3 rodadas e todas veem o mesmo resultado.
+### Fase 1 — Servidor e salas privadas ✅
+- [x] Projeto `server/` (Node + WebSocket `ws`) que serve os arquivos estáticos atuais.
+- [x] Código compartilhado entre cliente e servidor: grade, pontuação, dicionário e RNG (`js/core/`).
+- [x] Criar e entrar em sala por código ou link, perfil com nome + avatar, saguão, "Pronto" e anfitrião.
+- [x] **Grade em Grupo** (clássico) e **Grade Amigável** (novo): rodadas, relógio do servidor,
+      validação, placar ao vivo, revelação e pódio.
+- [x] Reconexão: quem cair volta para a mesma sala com os pontos guardados.
 
 ### Fase 2 — Mais modos em grupo e o modo Telão (1–2 semanas)
 - [ ] Grade Amigável, Caça-Palavras Corrida e Sudoku Duelo.
@@ -156,7 +165,7 @@ rodar no servidor de qualquer jeito.
 ### Fase 3 — Ranking global e perfis (1 semana)
 - [ ] Gravar cada partida no Postgres.
 - [ ] Página de ranking: **Maior pontuação por partida**, Hoje, Semana e Sempre, por modo.
-- [ ] Perfil simples: nome + avatar e, opcionalmente, login com Google para não perder o histórico.
+- [ ] Perfil simples: nome + avatar guardados no aparelho, sem login.
 - [ ] Estatísticas pessoais: maior palavra, média de pontos, vitórias.
 - [ ] Desafio do Dia Global com ranking mundial do dia.
 
@@ -186,9 +195,23 @@ rodar no servidor de qualquer jeito.
 ## 7. Riscos e decisões
 | Tema | Decisão sugerida |
 |---|---|
-| Hospedagem | Render/Railway (Node) + Supabase/Neon (Postgres), com plano grátis no início |
-| Login | Começar só com nome; login com Google na fase 3 |
+| Hospedagem | Por último. Vercel para o jogo; o tempo real precisa de um complemento (seção 8) |
+| Login | **Sem login**: nome + avatar. O ranking global da fase 3 usa um apelido, sem conta |
 | Dicionário | Validar no servidor; lista "comum" para gerar grades |
 | Latência | Relógio pelo horário do servidor (`endsAt`) e tolerância de 300 ms no fim |
 | Nomes ofensivos | Filtro de palavrões nos nomes de jogador |
 | Custo | Salas ficam em memória; o banco só grava o fim da partida |
+
+## 8. Hospedagem na Vercel (última etapa)
+A Vercel hospeda muito bem a parte estática (`index.html`, `css/`, `js/`, `data/`), mas as
+**Vercel Functions não mantêm conexões WebSocket abertas**, e o multijogador depende delas.
+Há duas saídas:
+
+1. **Vercel + servidor de tempo real separado (mais simples, recomendada):** o jogo fica na
+   Vercel e a pasta `server/` vai para o Render, Railway ou Fly.io, sem mudar o código.
+   Basta definir `window.TRAMA_WS_URL = 'wss://trama-server.onrender.com/ws'` no `index.html`.
+2. **Tudo "serverless" (Vercel + Ably/Pusher/Supabase Realtime):** troca a camada
+   `js/multi/net.js` e move a validação de palavras e o relógio para funções da Vercel
+   com o estado no banco. Dá mais trabalho e muda o motor de salas.
+
+Em qualquer caso, o ranking global (fase 3) pode usar o Postgres da Vercel ou do Supabase/Neon.

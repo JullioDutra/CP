@@ -1,29 +1,63 @@
 # Trama — jogos de letras e lógica
 
-Jogo web original de palavras e lógica, em português, com **ranking das maiores
-pontuações por partida** em cada modo. HTML, CSS e JavaScript puros (ES modules),
-sem dependências.
+Jogo web original de palavras e lógica, em português. Dá para jogar **sozinho** ou
+**com amigos ao mesmo tempo** (mesma grade, placar ao vivo e pódio no fim). Não precisa
+de cadastro: é só colocar o nome, escolher um avatar e criar a sala.
 
-## Como jogar localmente
-
-O jogo carrega o dicionário via `fetch`, então precisa de um servidor local
-(abrir o `index.html` direto pelo arquivo não funciona):
+## Como rodar
 
 ```bash
-npm start            # ou: python3 -m http.server 8080
-# abra http://localhost:8080
+npm install
+npm start            # servidor do jogo + multijogador em http://localhost:8080
 ```
 
-Também funciona em qualquer hospedagem estática (GitHub Pages, Netlify, Vercel…).
+O terminal também mostra o endereço para **celulares na mesma rede Wi-Fi**
+(ex.: `http://192.168.0.10:8080`). Quem cria a sala recebe um código de 4 letras e um
+link para mandar aos amigos.
+
+Os modos solo também funcionam num servidor estático simples
+(`python3 -m http.server`), mas o multijogador precisa do `npm start`.
+
+## Pontuação
+
+Mínimo de **3 letras**. Palavras maiores valem muito mais:
+
+| Letras | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10+ |
+|---|---|---|---|---|---|---|---|---|
+| Pontos | 1 | 2 | 4 | 7 | 11 | 16 | 22 | +7 por letra |
+
+As palavras são sem acento (A vale por Á, Ã, Â…; C vale por Ç), o que permite mais combinações.
+
+## Jogar com amigos (multijogador)
+
+1. **Criar ou entrar numa sala** → nome + avatar → **Criar sala** (ou digite o código / abra o link).
+2. No saguão, o anfitrião 👑 escolhe o modo, o número de rodadas (1–5), o tempo (1 a 3 min) e a grade (4×4 ou 5×5).
+   Os outros marcam **Estou pronto!**.
+3. Contagem 3-2-1, e todos recebem a **mesma grade** com o **mesmo relógio** (controlado pelo servidor).
+4. Durante a rodada, o **placar ao vivo** mostra os pontos e a quantidade de palavras de cada um, sem mostrar quais palavras foram achadas.
+5. No fim de cada rodada vem a **revelação**: as palavras de todos aparecem, com as exclusivas em verde e as repetidas
+   anuladas ou marcadas, além da maior palavra e das palavras que ninguém achou.
+6. Depois da última rodada aparece o **pódio** 🥇🥈🥉, e o anfitrião pode iniciar a **Revanche**.
+
+| Modo | Tipo | Regra |
+|---|---|---|
+| ⚡ **Grade em Grupo** | clássico | Palavra achada por 2+ pessoas é **anulada** para todos |
+| 🤝 **Grade Amigável** | novo | Repetidas pontuam; exclusivas valem **+50%** |
+
+O servidor valida tudo (palavra no dicionário, caminho na grade, tempo, limite de envios), então
+ninguém consegue trapacear pelo navegador. Quem cair ou recarregar a página volta para a mesma sala
+com as palavras e os pontos guardados.
 
 ## Modos
 
 Os modos ficam separados no menu e no código.
 
+## Modos solo
+
 ### Modos Clássicos (`js/modes/classicos/`)
 | Modo | Como funciona | Pontuação |
 |---|---|---|
-| ⚡ **Grade Relâmpago** | Grade 4×4, 3 min. Ligue letras vizinhas (inclusive diagonais) para formar palavras. | 3 letras = 1 · 4 = 2 · 5 = 3 · 6 = 5 · 7 = 8 · 8 = 11 · 9 = 15 |
+| ⚡ **Grade Relâmpago** | Grade 4×4, 3 min. Ligue letras vizinhas (inclusive diagonais) para formar palavras. | tabela acima |
 | 🔍 **Caça-Palavras** | Grade 12×12 com 10 palavras de um tema surpresa, em 8 direções. 4 min. | 10 por letra + 2 por segundo restante se achar todas |
 | 🔢 **Sudoku** | 9×9, Fácil / Médio / Difícil (solução sempre única). Modo de notas. 3 erros encerram. | base (1500/3000/5000) − 2/s − 150/erro |
 
@@ -40,6 +74,7 @@ Os modos ficam separados no menu e no código.
 - Sudoku: números 1–9, setas para mover, `N` liga/desliga notas.
 
 ## Ranking
+- Em grupo: o pódio de cada partida, e a sua pontuação vai para o seu ranking pessoal do modo.
 - Top 10 por modo (o Sudoku tem um ranking por dificuldade), guardado no
   `localStorage` do navegador. Mostra nome, pontos e data, com destaque para a sua partida.
 - Para um ranking online compartilhado, basta trocar as funções de
@@ -50,11 +85,15 @@ Os modos ficam separados no menu e no código.
 index.html
 css/style.css
 js/main.js                 menu, telas, resultado e ranking
-js/core/                   motor compartilhado (grade, dicionário, sudoku, ranking, RNG)
+js/core/                   motor compartilhado (grade, dicionário, sudoku, ranking, RNG,
+                           regras do multijogador em multimodes.js)
+js/multi/                  telas e conexão do multijogador
+server/                    servidor Node: arquivos + salas em tempo real (WebSocket)
 js/modes/classicos/        modos clássicos
 js/modes/novos/            modos novos
 data/palavras.txt          dicionário (MPL 2.0 — ver data/README.md)
 data/temas.js              temas do caça-palavras
+docs/PLANO.md              planejamento das próximas fases
 tests/                     testes da lógica (npm test)
 ```
 
@@ -63,3 +102,10 @@ Crie um arquivo em `js/modes/classicos/` ou `js/modes/novos/` exportando
 `{ id, category, name, icon, tagline, rules, start(root, api, opts) }`, chame
 `api.end({ score, summary })` ao terminar e registre-o na lista correspondente em
 `js/main.js`.
+
+## Hospedagem (fica para o fim)
+A ideia é usar a **Vercel**. Atenção: as funções da Vercel **não mantêm conexões WebSocket
+abertas**, então o tempo real precisa de um destes caminhos (detalhes em `docs/PLANO.md`):
+- jogo na Vercel + `server/` num serviço que aceite WebSocket (Render, Railway, Fly.io),
+  configurando `window.TRAMA_WS_URL`; ou
+- jogo na Vercel + um serviço de tempo real (Ably, Pusher ou Supabase Realtime).

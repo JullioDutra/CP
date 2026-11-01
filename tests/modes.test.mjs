@@ -39,7 +39,7 @@ assert.deepEqual(a.grid, b.grid);
 assert.deepEqual(a.bonus, b.bonus);
 assert.notDeepEqual(a.grid, c.grid);
 const bi = Object.keys(a.bonus).map(Number);
-assert.equal(dailyPoints('casas', [bi[0], bi[1]], a.bonus), 3 * 6);
+assert.equal(dailyPoints('casas', [bi[0], bi[1]], a.bonus), 4 * 6);
 const w = a.words[0];
 assert.ok(findPath(a.grid, 4, w));
 
