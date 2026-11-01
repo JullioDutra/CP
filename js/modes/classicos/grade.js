@@ -33,6 +33,7 @@ export default {
       : makeGrid(createRng(), size, { minWords: { 4: 35, 5: 90, 6: 150 }[size], tries: size === 6 ? 25 : 60 });
     const found = new Set();
     const paths = {};
+    const items = []; // para a revelação animada do fim
     let score = 0;
 
     const top = hud([['time', 'Tempo'], ['score', 'Pontos'], ['count', 'Palavras']]);
@@ -51,6 +52,7 @@ export default {
         const pts = wordPoints(w);
         score += pts;
         panel.add(w, pts, v.ai);
+        items.push({ label: w, pts, ai: v.ai });
         top.set('score', score);
         top.set('count', `${found.size}/${words.length}`);
         toast(root, `+${pts}`, 'good');
@@ -74,6 +76,7 @@ export default {
       wg.disable();
       api.end({
         score,
+        revealItems: items,
         summary: [['Palavras', found.size], ['Possíveis', words.length], ['Maior palavra', [...found].sort((a, b) => b.length - a.length)[0]?.toUpperCase() || '—']],
         extra: missedWords(words, found),
         online: online && { ticket: online.ticket, palavras: [...found].map((w) => ({ w, path: paths[w] })) },

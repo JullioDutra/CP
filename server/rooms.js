@@ -1,6 +1,6 @@
 // Gerencia salas e traduz mensagens dos clientes em ações na sala.
 import { randomInt } from 'node:crypto';
-import { Room } from './room.js';
+import { Room, ARENA_MAX } from './room.js';
 
 const CODE_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ'; // sem vogais: códigos não formam palavras
 const IDLE_MS = 10 * 60 * 1000;
@@ -22,9 +22,9 @@ export class RoomManager {
     }
   }
 
-  createRoom() {
+  createRoom({ isPublic = false } = {}) {
     const code = this.newCode();
-    const room = new Room(code, { verifier: this.verifier, ...this.roomOptions, onChange: (r) => this.broadcast(r), onFinal: (r) => this.record(r) });
+    const room = new Room(code, { verifier: this.verifier, ...this.roomOptions, isPublic, onChange: (r) => this.broadcast(r), onFinal: (r) => this.record(r) });
     this.rooms.set(code, room);
     this.sockets.set(code, new Map());
     return room;
@@ -32,13 +32,37 @@ export class RoomManager {
 
   // grava a partida encerrada no ranking global
   record(room) {
-    if (!this.store) return;
+    if (!this.store) return null;
     try {
       const summary = room.matchSummary();
-      if (summary.players.length) this.store.recordMatch(summary);
+      if (summary.players.length) return this.store.recordMatch(summary);
     } catch (e) {
       console.error('[ranking] não foi possível gravar a partida:', e.message);
     }
+    return null;
+  }
+
+  // Arena Pública: entra numa sala aberta esperando gente, ou abre uma nova.
+  arenaRoom() {
+    for (const r of this.rooms.values()) {
+      if (r.public && r.phase === 'lobby' && r.players.size < ARENA_MAX) return r;
+    }
+    return this.createRoom({ isPublic: true });
+  }
+
+  arenaStatus() {
+    let waiting = 0, playing = 0;
+    for (const r of this.rooms.values()) {
+      if (!r.public) continue;
+      if (r.phase === 'lobby') waiting += r.players.size;
+      else playing += [...r.players.values()].filter((p) => p.connected).length;
+    }
+    return { waiting, playing };
+  }
+
+  broadcastRaw(room, msg) {
+    const conns = this.sockets.get(room.code);
+    if (conns) for (const send of conns.values()) send(msg);
   }
 
   // perfil (sem login) enviado pelo navegador: { name, avatar, profile: token }
@@ -82,6 +106,16 @@ export class RoomManager {
       create: (m) => {
         const r = this.createRoom();
         attach(r, r.addPlayer(this.withProfile(m)));
+      },
+      quick: (m) => {
+        // sai da sala anterior (ex.: "jogar outra" depois do fim da Arena)
+        if (room && !isTv) { this.sockets.get(room.code)?.delete(playerId); room.leave(playerId); room = null; }
+        const r = this.arenaRoom();
+        attach(r, r.addPlayer(this.withProfile(m)));
+      },
+      react: (m) => {
+        const r = room.react(playerId, m.emoji);
+        if (r) this.broadcastRaw(room, { t: 'reaction', ...r });
       },
       join: (m) => {
         const r = this.rooms.get(String(m.code || '').toUpperCase().trim());
@@ -133,7 +167,7 @@ export class RoomManager {
         const fn = actions[msg?.t];
         if (!fn) return;
         if (isTv && !['ping', 'leave'].includes(msg.t)) return; // telão só assiste
-        if (!['create', 'join', 'resume', 'watch', 'ping'].includes(msg.t) && !room) {
+        if (!['create', 'join', 'resume', 'watch', 'ping', 'quick'].includes(msg.t) && !room) {
           send({ t: 'error', message: 'Você não está em uma sala' });
           return;
         }

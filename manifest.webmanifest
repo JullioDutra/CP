@@ -1,0 +1,15 @@
+{
+  "name": "Trama — jogos de letras e lógica",
+  "short_name": "Trama",
+  "description": "Grade de palavras, caça-palavras e sudoku — sozinho ou com amigos ao mesmo tempo.",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f4fb",
+  "theme_color": "#6a5ae0",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

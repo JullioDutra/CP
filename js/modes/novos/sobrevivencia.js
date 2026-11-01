@@ -36,6 +36,7 @@ export default {
     const size = 5;
     const { grid } = makeGrid(rng, size, { minWords: 70 });
     const found = new Set();
+    const items = [];
     let score = 0;
 
     const top = hud([['time', 'Vida'], ['score', 'Pontos'], ['alive', 'Sobrevivido']]);
@@ -67,6 +68,7 @@ export default {
         score += pts;
         timer.add(gain);
         panel.add(w, pts, v.ai);
+        items.push({ label: w, pts, ai: v.ai });
         top.set('score', score);
         toast(root, `+${pts} pts · +${gain}s`, 'good');
         if (w.length >= 6 && path) {
@@ -106,8 +108,10 @@ export default {
       const survived = Math.floor(timer.elapsed);
       const bonus = Math.floor(survived / 10);
       score += bonus;
+      if (bonus) items.push({ label: '⏳ Bônus', pts: bonus });
       api.end({
         score,
+        revealItems: items,
         summary: [['Sobreviveu', fmtTime(survived)], ['Palavras', found.size], ['Bônus de sobrevivência', bonus]],
       });
     }

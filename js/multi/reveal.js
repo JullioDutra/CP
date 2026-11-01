@@ -17,9 +17,14 @@ export function buildEvents(r) {
         map.set(w.w, e);
       }
     }
-    return [...map.values()]
+    const words = [...map.values()]
       .map((e) => ({ ...e, pts: Math.max(...e.gains.map((g) => g.pts)) }))
       .sort((a, b) => a.pts - b.pts || a.len - b.len || a.label.localeCompare(b.label));
+    // bônus (ex.: colocação na Sobrevivência) entram por último, para o suspense
+    const extras = (r.extras || [])
+      .map((x) => ({ label: x.label, len: 0, pts: x.pts, gains: [{ id: x.id, pts: x.pts, words: 0 }] }))
+      .sort((a, b) => a.pts - b.pts);
+    return [...words, ...extras];
   }
   if (r.type === 'wordsearch') {
     return r.words
@@ -29,6 +34,12 @@ export function buildEvents(r) {
         return { label: w.display.toUpperCase(), len, pts: len * 10, gains: [{ id: w.by, pts: len * 10, words: 1 }] };
       })
       .sort((a, b) => a.pts - b.pts || a.label.localeCompare(b.label));
+  }
+  if (r.type === 'list') {
+    // lista genérica (modos solo): { items: [{ id, label, pts, ai? }] }
+    return r.items
+      .map((it) => ({ label: it.label.toUpperCase(), len: normalize(it.label).length, pts: it.pts, ai: !!it.ai, gains: [{ id: it.id, pts: it.pts, words: 1 }] }))
+      .sort((a, b) => a.pts - b.pts || a.len - b.len || a.label.localeCompare(b.label));
   }
   if (r.type === 'sudoku') {
     return Object.entries(r.players || {})
@@ -65,13 +76,13 @@ export function delays(n) {
  * @param {boolean} o.final
  * @param {() => void} o.onDone
  */
-export function createReveal({ round, players, totals, you, hueOf, final, onDone }) {
+export function createReveal({ round, players, totals, you, hueOf, final, onDone, finishText = null, intro = null }) {
   const events = buildEvents(round);
   const countWords = round.type !== 'sudoku';
   const state = Object.fromEntries(players.map((p) => [p.id, { score: (totals[p.id] ?? 0) - (round.scores?.[p.id] ?? 0), words: 0 }]));
   const rowH = 58;
 
-  const card = h('div', { class: 'reveal-card idle' }, h('div', { class: 'rc-word' }, final ? 'Quem vai vencer?' : 'Contando os pontos…'));
+  const card = h('div', { class: 'reveal-card idle' }, h('div', { class: 'rc-word' }, intro || (final ? 'Quem vai vencer?' : 'Contando os pontos…')));
   const board = h('div', { class: 'race', style: `height:${players.length * rowH}px` });
   const progress = h('div', { class: 'reveal-progress' }, h('div', { class: 'rp-fill' }));
   const rows = {};
@@ -102,7 +113,8 @@ export function createReveal({ round, players, totals, you, hueOf, final, onDone
       r.el.style.transform = `translateY(${i * rowH}px)`;
       r.bar.style.width = `${Math.max(2, (state[p.id].score / max) * 100)}%`;
       r.pos.textContent = `${i + 1}º`;
-      r.words.textContent = countWords ? `${state[p.id].words} ${state[p.id].words === 1 ? 'palavra' : 'palavras'}` : '';
+      const ghost = !(p.id in (round.scores || {})); // linha de referência (recorde, 1º do dia)
+      r.words.textContent = countWords && !ghost ? `${state[p.id].words} ${state[p.id].words === 1 ? 'palavra' : 'palavras'}` : ghost ? 'referência' : '';
       countUp(r.score, animateFrom?.[p.id] ?? state[p.id].score, state[p.id].score);
     });
   }
@@ -171,13 +183,15 @@ export function createReveal({ round, players, totals, you, hueOf, final, onDone
     const order = players.slice().sort((a, b) => state[b.id].score - state[a.id].score);
     const leader = order[0];
     card.className = 'reveal-card done';
+    const custom = finishText?.(leader, state);
     card.replaceChildren(
-      h('div', { class: 'rc-word' }, leader ? `${leader.avatar} ${leader.name}` : 'Fim!'),
-      h('div', { class: 'rc-meta' }, h('span', { class: 'rc-pts' }, final ? '🏆 venceu a partida!' : 'lidera a partida!')));
+      h('div', { class: 'rc-word' }, custom?.title ?? (leader ? `${leader.avatar} ${leader.name}` : 'Fim!')),
+      h('div', { class: 'rc-meta' }, h('span', { class: 'rc-pts' }, custom?.sub ?? (final ? '🏆 venceu a partida!' : 'lidera a partida!'))));
     if (leader) rows[leader.id].el.classList.add('leader');
     skipBtn.remove();
     play(final ? 'win' : 'end');
-    onDone?.();
+    // espera a última contagem de pontos terminar antes de mostrar o resto
+    setTimeout(() => onDone?.(), skipped ? 0 : 450);
   }
 
   layout();

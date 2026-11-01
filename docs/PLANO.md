@@ -27,7 +27,11 @@ sorteia a grade, controla o relógio, valida as palavras e guarda os rankings.
 - ✅ **Ajustes pós-Fase 3:** tela da partida limpa (tempo em cima, grade quase em tela cheia, regras só no início) e
   **revelação animada** do resultado (palavras da menor para a maior, barras subindo, suspense, contagem de palavras,
   botão "Mais estatísticas").
-- ⏭️ Próximo: **Fase 4** (Arena Pública, ligas e temporadas, Arena Sobrevivência e Times).
+- ✅ **Fase 4:** Arena Pública (fila automática, sem anfitrião), ligas com nível (Elo) por temporada mensal,
+  Arena Sobrevivência, Times (🔴 × 🔵), denúncia de jogador.
+- ✅ **Fase 5:** conquistas (12), sequência de dias 🔥 no Desafio do Dia, reações com emoji, temas desbloqueáveis,
+  PWA (instalar no celular + modos solo offline), revelação animada também no solo.
+- ⏭️ Próximo: testar o MVP com pessoas de verdade e hospedar (seção 8).
 
 ---
 
@@ -184,18 +188,22 @@ rodar no servidor de qualquer jeito.
 - [x] Partidas solo verificadas: o servidor entrega a grade (ticket), confere o tempo e recalcula os pontos.
 - [x] Desafio do Dia no ranking global (1 partida oficial por pessoa por dia).
 
-### Fase 4 — Competitivo de verdade (2 semanas)
-- [ ] **Arena Pública** com fila automática (2–8 jogadores e início em 20 s ou com a sala cheia).
-- [ ] **Classificação por nível** (Elo simplificado) e ligas Bronze → Diamante, com temporadas mensais.
-- [ ] Arena Sobrevivência e Times.
-- [ ] Antitrapaça: limite de envios, detecção de pontuação impossível e denúncia de jogador.
+### Fase 4 — Competitivo ✅
+- [x] **Arena Pública**: botão "⚡ Arena Pública" junta de 2 a 8 desconhecidos; começa sozinha 20 s depois de ter 2 pessoas
+      (ou na hora com 8); rodadas avançam sozinhas; "Jogar outra" volta para a fila.
+- [x] **Ligas por nível** (Elo simplificado, começa em 1000): Bronze, Prata (1100), Ouro (1200), Platina (1300), Diamante (1450).
+      Só muda na Arena (contra desconhecidos). **Temporada mensal** (zera todo mês).
+- [x] **Arena Sobrevivência**: 60 s de vida; palavra devolve 1 s/letra e tira 1 s de cada adversário; o último vence; bônus 40/20/10.
+- [x] **Times** 🔴 × 🔵: sorteados e equilibrados; palavra repetida dentro do time não vale de novo.
+- [x] Antitrapaça: tudo validado no servidor, limite de ações, partidas solo recalculadas; **denúncia de jogador** (⚑).
 
-### Fase 5 — Diversão e retenção (contínuo)
-- [ ] Conquistas: "Primeira palavra de 8 letras", "10 exclusivas numa rodada", "7 dias seguidos no Desafio".
-- [ ] Sequência diária com chama 🔥 e lembrete.
-- [ ] Reações rápidas no saguão e na revelação (😂 😮 👏).
-- [ ] Temas visuais desbloqueáveis por conquista (sem compras).
-- [ ] PWA: instalar no celular e jogar os modos solo offline.
+### Fase 5 — Diversão e retenção ✅
+- [x] 12 **conquistas** (primeira vitória, palavra de 8/10 letras, 100 pontos, 10 únicas, sequências, Arena, Liga Ouro…).
+- [x] **Sequência diária** 🔥 no Desafio do Dia (aparece no perfil e no menu).
+- [x] **Reações rápidas** (😂 😮 👏 🔥 😭 🤯 ❤️ 👀) no saguão e no resultado, também no telão.
+- [x] **Temas** desbloqueáveis por conquista: Lavanda, Menta, Pêssego, Oceano, Noite estrelada.
+- [x] **PWA**: instalar no celular; modos solo funcionam sem internet.
+- [x] Revelação animada também no fim das partidas solo (você × seu recorde × 1º do dia).
 
 ---
 

@@ -5,6 +5,7 @@ import { createRng } from '../js/core/rng.js';
 import { makeGrid } from '../js/core/letters.js';
 import { SOLO_RANKED, MIN_WORDS, dailyPuzzle, scoreWords } from '../js/core/solo.js';
 import { cleanName } from './room.js';
+import { seasonOf } from '../js/core/leagues.js';
 
 const PERIODS = ['hoje', 'semana', 'sempre'];
 export const RANKED_MODES = new Set([...Object.keys(MULTI_MODES), ...Object.keys(SOLO_RANKED)]);
@@ -15,7 +16,7 @@ export function brDay(now = Date.now()) {
   return new Date(now - 3 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-export function createApi({ verifier, store, now = Date.now }) {
+export function createApi({ verifier, store, now = Date.now, arenaStatus = () => ({ waiting: 0, playing: 0 }) }) {
   const hits = new Map();
   function allow(key, max, windowMs = 60000) {
     const t = now();
@@ -93,6 +94,26 @@ export function createApi({ verifier, store, now = Date.now }) {
       const voce = me ? store.positionOf({ mode, variant, period, profileId: me.id }) : null;
       return [200, { rows, voce }];
     },
+    // ---------- ligas (temporada do mês) ----------
+    'GET /api/ligas': (req) => {
+      const me = profileOf(req);
+      const season = seasonOf(now());
+      return [200, { temporada: season, rows: store.leagueTable({ season, limit: 30 }), voce: me ? store.ratingOf(me.id, season) : null }];
+    },
+
+    // ---------- Arena Pública ----------
+    'GET /api/arena': () => [200, arenaStatus()],
+
+    // ---------- denúncia de jogador ----------
+    'POST /api/denuncia': async (req) => {
+      const me = profileOf(req);
+      if (!allow(`denuncia:${req.socket.remoteAddress}`, 10, 3600 * 1000)) return [429, { erro: 'Muitas denúncias, tente mais tarde' }];
+      const b = await body(req);
+      if (!b.nome) return [400, { erro: 'Quem você quer denunciar?' }];
+      store.report({ reporterId: me?.id, reportedId: null, reportedName: b.nome, room: b.sala, reason: b.motivo });
+      return [200, { ok: true }];
+    },
+
     'GET /api/vencedores': (req, res, url) => {
       const period = PERIODS.includes(url.searchParams.get('periodo')) ? url.searchParams.get('periodo') : 'semana';
       return [200, { rows: store.winners({ period, limit: 10 }) }];
@@ -135,14 +156,15 @@ export function createApi({ verifier, store, now = Date.now }) {
       if (elapsed > t.duration * 1000 + GRACE_MS) return [200, { ok: false, ranked: false, erro: 'Tempo da partida excedido; não entrou no ranking' }];
       const words = Array.isArray(b.palavras) ? b.palavras : [];
       const r = scoreWords(t.data, words);
+      let conquistas = [];
       if (t.ranked && r.score > 0) {
-        store.recordMatch({
+        conquistas = store.recordMatch({
           mode: t.mode, variant: t.variant, kind: 'solo',
           players: [{ profileId: p.id, name: p.name, avatar: p.avatar, score: r.score, place: 1, words: r.accepted.length, unique: 0, longest: r.longest }],
-        });
+        }).achievements[p.id] || [];
       }
       return [200, {
-        ok: true, ranked: !!t.ranked, score: r.score, palavras: r.accepted.length, recusadas: r.rejected,
+        ok: true, ranked: !!t.ranked, score: r.score, conquistas, palavras: r.accepted.length, recusadas: r.rejected,
         posicao: t.ranked && r.score > 0 ? positions(t.mode, t.variant, p.id) : null,
       }];
     },

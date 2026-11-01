@@ -7,6 +7,16 @@ export const AVATARS = ['🦊', '🐼', '🐸', '🐙', '🦉', '🐯', '🐨', 
 export const PLAYER_HUES = [8, 210, 140, 45, 280, 180, 330, 95, 25, 250, 160, 300];
 
 const ROUNDS = { label: 'Rodadas', choices: [1, 2, 3, 4, 5], format: 'plain' };
+
+// Times (modo Times) e reações rápidas.
+export const TEAMS = {
+  A: { name: 'Time Vermelho', avatar: '🔴', hue: 4 },
+  B: { name: 'Time Azul', avatar: '🔵', hue: 215 },
+};
+export const REACTIONS = ['😂', '😮', '👏', '🔥', '😭', '🤯', '❤️', '👀'];
+
+// Arena Sobrevivência
+export const SURVIVAL = { startMs: 60000, maxMs: 90000, stealMs: 1000, gainPerLetterMs: 1000, bonus: [40, 20, 10] };
 const DIFFICULTY_LABELS = { facil: 'Fácil', medio: 'Médio', dificil: 'Difícil' };
 
 export const MULTI_MODES = {
@@ -81,6 +91,46 @@ export const MULTI_MODES = {
       'Palavra que passa por uma casa especial tem os pontos multiplicados (×2 e ×3 juntas = ×6!).',
       'Várias pessoas podem achar a mesma palavra: todas ganham os pontos.',
       'No fim, o tanque mostra quantas palavras foram únicas e quantas repetidas.',
+    ],
+    options: {
+      rounds: { ...ROUNDS, default: 3 },
+      seconds: { label: 'Tempo', choices: [60, 90, 120, 180, 240], default: 120, format: 'time' },
+      size: { label: 'Grade', choices: [4, 5, 6], default: 5, format: 'grid' },
+    },
+  },
+  'arena-sobrevivencia': {
+    id: 'arena-sobrevivencia',
+    game: 'grade',
+    category: 'novo',
+    name: 'Arena Sobrevivência',
+    icon: '⏳',
+    short: 'Suas palavras roubam tempo dos outros',
+    survival: true,
+    rules: [
+      'Todos começam com 60 segundos de vida na mesma grade.',
+      'Cada palavra sua devolve 1 s por letra para você e tira 1 s de cada adversário.',
+      'Quem zerar o tempo está fora. O último que sobrar vence a rodada.',
+      'Bônus por colocação: 1º +40 · 2º +20 · 3º +10, além dos pontos das palavras.',
+    ],
+    options: {
+      rounds: { ...ROUNDS, choices: [1, 2, 3], default: 1 },
+      seconds: { label: 'Limite', choices: [180, 300], default: 300, format: 'time' },
+      size: { label: 'Grade', choices: [4, 5, 6], default: 5, format: 'grid' },
+    },
+  },
+  'times': {
+    id: 'times',
+    game: 'grade',
+    category: 'novo',
+    name: 'Times',
+    icon: '🤜',
+    short: '🔴 contra 🔵, pontos somados',
+    teams: true,
+    rules: [
+      'Os jogadores são sorteados em dois times: 🔴 Vermelho e 🔵 Azul.',
+      'Os pontos de cada pessoa somam para o time. Vence o time com mais pontos.',
+      'Palavra que alguém do seu time já achou não vale de novo para o time.',
+      'Entre times diferentes, todo mundo pode achar a mesma palavra.',
     ],
     options: {
       rounds: { ...ROUNDS, default: 3 },

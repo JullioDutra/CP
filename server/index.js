@@ -17,8 +17,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 loadDotEnv(path.join(ROOT, '.env'));
 const PORT = Number(process.env.PORT) || 8080;
 const DATA_DIR = process.env.TRAMA_DATA_DIR || path.join(ROOT, 'data', 'runtime');
-const PUBLIC = ['index.html', 'css/', 'js/', 'data/palavras.txt', 'data/comuns.txt', 'data/temas.js'];
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
+const PUBLIC = ['index.html', 'css/', 'js/', 'data/palavras.txt', 'data/comuns.txt', 'data/temas.js', 'manifest.webmanifest', 'sw.js', 'icon.svg'];
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 
 const readList = (f) => readFileSync(path.join(ROOT, 'data', f), 'utf8').split('\n');
 setDictWords(readList('palavras.txt'), readList('comuns.txt'));
@@ -28,7 +28,8 @@ const verifier = createVerifier({
   learnedFile: path.join(DATA_DIR, 'aprendidas.txt'),
 });
 const store = createStore(process.env.TRAMA_DB || path.join(DATA_DIR, 'trama.db'));
-const api = createApi({ verifier, store });
+const manager = new RoomManager({ verifier, store });
+const api = createApi({ verifier, store, arenaStatus: () => manager.arenaStatus() });
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -48,7 +49,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-const manager = new RoomManager({ verifier, store });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
 
 wss.on('connection', (ws) => {

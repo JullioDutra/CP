@@ -8,11 +8,16 @@ import cacapalavras from './modes/classicos/cacapalavras.js';
 import sudoku from './modes/classicos/sudoku.js';
 import sobrevivencia from './modes/novos/sobrevivencia.js';
 import diario from './modes/novos/diario.js';
-import { initMulti, openMulti, openTv, roomCodeFromUrl, tvFromUrl, multiRankingModes } from './multi/multi.js';
+import { initMulti, openMulti, openTv, openArena, roomCodeFromUrl, tvFromUrl, multiRankingModes } from './multi/multi.js';
+import { applyTheme } from './core/theme.js';
+import { achievementByKey } from './core/achievements.js';
+import { markSeenAchievements } from './core/achv-toast.js';
 import { muteButton } from './core/sound.js';
 import { POINTS_HINT } from './core/letters.js';
 import { showRanking as showRankingScreen, showProfile } from './screens/global.js';
-import { saveIdentity, localProfile, getAvatar, serverStatus } from './core/profile.js';
+import { saveIdentity, localProfile, getAvatar, serverStatus, api } from './core/profile.js';
+import { createReveal } from './multi/reveal.js';
+import { todayKey } from './core/rng.js';
 import { finishOnline } from './core/online-solo.js';
 
 const CLASSICOS = [grade, cacapalavras, sudoku];
@@ -64,6 +69,7 @@ function showMenu() {
         { class: 'multi-cta' },
         h('div', { class: 'row-actions' },
           h('button', { class: 'btn big', onclick: () => openMulti() }, 'Criar ou entrar numa sala'),
+          h('button', { class: 'btn ghost big arena-btn', onclick: () => openArena() }, '⚡ Arena Pública', arenaStatusEl()),
           h('button', { class: 'btn ghost big', onclick: () => { history.replaceState(null, '', '?tela=1'); openTv(); } }, '📺 Abrir Telão')),
         h('div', { class: 'multi-modes' }, multiRankingModes.map((m) => h('span', { class: `pill ${m.category}` }, `${m.icon} ${m.name} · ${m.category === 'classico' ? 'clássico' : 'novo'}`)))
       )
@@ -91,8 +97,22 @@ function showMenu() {
 function profileChip() {
   const p = localProfile();
   const name = p?.name || getPlayerName();
+  const extra = h('span', { class: 'pc-extra' });
+  // sequência de dias 🔥 e liga (quando há servidor)
+  if (p?.token) api('perfil').then(({ stats }) => {
+    extra.replaceChildren(stats.streak ? h('span', { class: 'pc-streak', title: 'Dias seguidos no Desafio do Dia' }, `🔥${stats.streak}`) : '');
+  }).catch(() => {});
   return h('button', { class: 'profile-chip', onclick: () => showProfile(ctx), title: 'Meu perfil' },
-    h('span', { class: 'pc-avatar' }, p?.avatar || getAvatar()), name ? h('span', {}, name) : h('span', {}, 'Criar perfil'));
+    h('span', { class: 'pc-avatar' }, p?.avatar || getAvatar()), name ? h('span', {}, name) : h('span', {}, 'Criar perfil'), extra);
+}
+
+// "3 esperando · 5 jogando" na Arena Pública
+function arenaStatusEl() {
+  const el = h('small', { class: 'arena-status' });
+  serverStatus().then((ok) => ok && api('arena').then((a) => {
+    el.textContent = a.waiting || a.playing ? ` ${a.waiting} esperando · ${a.playing} jogando` : '';
+  })).catch(() => {});
+  return el;
 }
 
 // ---------- Introdução do modo ----------
@@ -145,7 +165,7 @@ function play(m, baseOpts = {}) {
   const root = h('div', { class: `game ${m.id}` });
   screen(topBar(m), root);
   let finished = false;
-  const api = {
+  const gameApi = {
     end(result) {
       if (finished) return;
       finished = true;
@@ -160,19 +180,21 @@ function play(m, baseOpts = {}) {
     await new Promise((r) => setTimeout(r, 30));
     if (!root.isConnected) return;
     root.replaceChildren();
-    cleanup = m.start(root, api, opts) || null;
+    cleanup = m.start(root, gameApi, opts) || null;
   })();
 }
 
 // Envia a partida solo ao servidor, que confere as palavras e devolve a posição no ranking global.
 function onlineResult(result, m) {
   const el = h('div', { class: 'global-pos' }, h('p', { class: 'muted' }, '🌍 Enviando para o ranking global…'));
-  finishOnline(result.online.ticket, result.online.palavras)
+  (result._online ||= finishOnline(result.online.ticket, result.online.palavras))
     .then((r) => {
       if (!r.ok) { el.replaceChildren(h('p', { class: 'notice' }, r.erro || 'A partida não entrou no ranking global.')); return; }
       if (!r.ranked) { el.replaceChildren(h('p', { class: 'muted' }, '🌍 Partida de treino: não conta no ranking global.')); return; }
       const pos = r.posicao;
-      el.replaceChildren(pos
+      const fresh = (r.conquistas || []).map((k) => achievementByKey[k]).filter(Boolean);
+      if (fresh.length) markSeenAchievements(fresh.map((a) => a.key));
+      el.replaceChildren(fresh.length ? h('div', { class: 'achv-new' }, h('p', {}, '🏅 Conquista nova!'), h('div', { class: 'achv-list' }, fresh.map((a) => h('span', { class: 'achv-pill' }, `${a.icon} ${a.name}`)))) : '', pos
         ? h('div', { class: 'pos-cards' },
             h('p', {}, '🌍 Ranking global (conferido pelo servidor: ', h('strong', {}, `${r.score} pts`), ')'),
             h('div', { class: 'pos-row' }, (m.id === 'novo-diario' ? [['hoje', 'Desafio de hoje']] : [['hoje', 'Hoje'], ['semana', 'Semana'], ['sempre', 'Sempre']]).map(([k, label]) =>
@@ -184,10 +206,62 @@ function onlineResult(result, m) {
   return el;
 }
 
+// Fim da partida solo: revelação animada (você × seu recorde × 1º do dia no ranking global).
+async function showSoloReveal(m, opts, result) {
+  const rankId = m.rankingKey ? m.rankingKey(opts) : m.id;
+  const record = getRanking(rankId)[0]?.score || 0;
+  if (result.online) result._online = finishOnline(result.online.ticket, result.online.palavras).catch((e) => ({ ok: false, erro: e.message }));
+  let top = null;
+  if (m.globalRanking && (await serverStatus())) {
+    const variant = m.id === 'novo-diario' ? todayKey() : opts.size || '4';
+    top = await Promise.race([
+      api(`ranking?modo=${m.id}&variante=${variant}&periodo=${m.id === 'novo-diario' ? 'sempre' : 'hoje'}`).then((r) => r.rows[0] || null).catch(() => null),
+      new Promise((r) => setTimeout(() => r(null), 1200)),
+    ]);
+  }
+  const p = localProfile();
+  const players = [{ id: 'me', name: p?.name || getPlayerName() || 'Você', avatar: p?.avatar || getAvatar() }];
+  const totals = { me: result.score };
+  if (record) { players.push({ id: 'rec', name: 'Seu recorde', avatar: '👻' }); totals.rec = record; }
+  if (top && top.profileId !== p?.id) { players.push({ id: 'top', name: `1º de hoje: ${top.name}`, avatar: '🌍' }); totals.top = top.score; }
+  const hues = { me: 255, rec: 220, top: 40 };
+
+  // salva no ranking deste aparelho automaticamente (com o nome do perfil)
+  const ranked = result.ranked !== false;
+  if (ranked && qualifies(rankId, result.score) && getPlayerName()) {
+    result._saved = addScore(rankId, { name: getPlayerName(), score: result.score, detail: result.detail || null });
+  }
+
+  const after = h('div', { class: 'after-reveal hidden' });
+  const reveal = createReveal({
+    round: { type: 'list', items: result.revealItems.map((it) => ({ ...it, id: 'me' })), scores: { me: result.score } },
+    players, totals, you: 'me', hueOf: (id) => hues[id] ?? 0, final: true,
+    intro: record ? `Seu recorde: ${record} pts` : 'Contando seus pontos…',
+    finishText: () => {
+      if (!record) return { title: `${result.score} pontos`, sub: 'Primeira partida neste modo!' };
+      if (result.score > record) return { title: '🏆 Novo recorde!', sub: `${result.score} pontos (antes: ${record})` };
+      if (result.score === record) return { title: `${result.score} pontos`, sub: 'Empatou com o seu recorde!' };
+      return { title: `${result.score} pontos`, sub: `Faltaram ${record - result.score + 1} para o recorde` };
+    },
+    onDone: () => {
+      after.replaceChildren(
+        result.online ? onlineResult(result, m) : '',
+        h('div', { class: 'row-actions center' },
+          h('button', { class: 'btn ghost', onclick: () => showResult(m, opts, { ...result, _revealed: true }) }, '📊 Mais estatísticas'),
+          h('button', { class: 'btn big', onclick: () => play(m, opts) }, 'Jogar de novo'),
+          h('button', { class: 'btn ghost', onclick: showMenu }, 'Menu')));
+      after.classList.remove('hidden');
+    },
+  });
+  screen(topBar(m), h('div', { class: 'result card solo-reveal' }, h('h2', {}, 'Fim de partida'), reveal.el, after));
+  setCleanup(() => reveal.destroy());
+}
+
 function showResult(m, opts, result) {
+  if (result.revealItems && !result._revealed) return showSoloReveal(m, opts, result);
   const rankId = m.rankingKey ? m.rankingKey(opts) : m.id;
   const ranked = result.ranked !== false;
-  const canRank = ranked && qualifies(rankId, result.score);
+  const canRank = ranked && !result._saved && qualifies(rankId, result.score);
   const nameInput = h('input', { type: 'text', maxlength: 20, placeholder: 'Seu nome', value: getPlayerName() });
   const saveArea = h('div', { class: 'save' });
   const rankArea = h('div');
@@ -212,12 +286,14 @@ function showResult(m, opts, result) {
         },
       }, nameInput, h('button', { class: 'btn', type: 'submit' }, 'Salvar no ranking'))
     );
+  } else if (result._saved) {
+    saveArea.append(h('p', { class: 'saved' }, `Salvo no ranking deste aparelho: ${result._saved.pos}º lugar.`));
   } else if (!ranked) {
     saveArea.append(h('p', {}, 'Esta partida não conta para o ranking.'));
   } else if (result.score > 0) {
     saveArea.append(h('p', {}, 'Não foi dessa vez — o ranking guarda as 10 melhores partidas.'));
   }
-  renderRank();
+  renderRank(result._saved?.id);
 
   screen(
     topBar(m),
@@ -313,6 +389,13 @@ function showRanking(selected) {
 // ---------- Início ----------
 function hasSession() {
   try { return !!sessionStorage.getItem('trama.session'); } catch { return false; }
+}
+
+applyTheme();
+
+// PWA: instala no celular e joga os modos solo offline
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }
 
 (async function init() {

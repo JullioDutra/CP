@@ -5,6 +5,9 @@ import { SOLO_RANKED } from '../core/solo.js';
 import { todayKey } from '../core/rng.js';
 import { getPlayerName } from '../core/ranking.js';
 import { api, serverStatus, ensureProfile, localProfile, saveIdentity, importProfileCode, getAvatar } from '../core/profile.js';
+import { LEAGUES, leagueOf, seasonLabel } from '../core/leagues.js';
+import { ACHIEVEMENTS, THEMES, achievementByKey } from '../core/achievements.js';
+import { applyTheme, currentTheme, unlockedThemes } from '../core/theme.js';
 
 const PERIODS = [['hoje', 'Hoje'], ['semana', 'Semana'], ['sempre', 'Sempre']];
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -68,12 +71,14 @@ export async function showRanking(ctx, { mode = null, tab = null } = {}) {
   function renderTabs() {
     tabsEl.replaceChildren(
       h('button', { class: `seg-btn ${state.tab === 'global' ? 'on' : ''}`, onclick: () => { state.tab = 'global'; render(); } }, '🌍 Global'),
+      h('button', { class: `seg-btn ${state.tab === 'ligas' ? 'on' : ''}`, onclick: () => { state.tab = 'ligas'; render(); } }, '🏅 Ligas'),
       h('button', { class: `seg-btn ${state.tab === 'local' ? 'on' : ''}`, onclick: () => { state.tab = 'local'; render(); } }, '📱 Neste aparelho'));
   }
 
   async function render() {
     renderTabs();
     if (state.tab === 'local') { ctx.renderLocal(content); return; }
+    if (state.tab === 'ligas') { renderLeagues(content, online, meId); return; }
     if (!online) {
       content.replaceChildren(h('p', { class: 'notice' }, 'O ranking global precisa do servidor do Trama (npm start). Por enquanto, veja o ranking deste aparelho.'));
       return;
@@ -153,7 +158,12 @@ export async function showProfile(ctx) {
     const codeEl = h('code', { class: 'secret' }, '••••••••••••••••');
     const importInput = h('input', { type: 'text', placeholder: 'Cole aqui o código do outro aparelho', class: 'import-input' });
     body.replaceChildren(
-      h('div', { class: 'profile-head' }, h('div', { class: 'profile-avatar' }, p.avatar), h('div', {}, h('h2', {}, p.name), h('p', { class: 'muted' }, `${stats.matches} partidas jogadas`))),
+      h('div', { class: 'profile-head' }, h('div', { class: 'profile-avatar' }, p.avatar),
+        h('div', {}, h('h2', {}, p.name),
+          h('p', { class: 'muted' }, `${stats.matches} ${stats.matches === 1 ? 'partida jogada' : 'partidas jogadas'}`),
+          h('div', { class: 'badges' },
+            h('span', { class: 'badge-pill' }, `${leagueOf(stats.rating.rating).icon} ${leagueOf(stats.rating.rating).name} · ${stats.rating.rating}`),
+            stats.streak ? h('span', { class: 'badge-pill fire' }, `🔥 ${stats.streak} ${stats.streak === 1 ? 'dia' : 'dias'} seguidos`) : ''))),
       h('div', { class: 'stats-grid' },
         card('Partidas', stats.matches, '🎮'),
         card('Vitórias em grupo', stats.wins, '🏆'),
@@ -168,10 +178,12 @@ export async function showProfile(ctx) {
         stats.recent.length
           ? h('ul', { class: 'recent' }, stats.recent.map((r) => h('li', {},
               h('span', { class: 'r-mode' }, `${modeIcon(r.mode)} ${modeName(r.mode)}`, r.variant && !SOLO_RANKED[r.mode]?.daily ? h('small', {}, ` · ${variantLabel(r.mode, r.variant)}`) : ''),
-              h('span', { class: 'r-place' }, r.kind === 'multi' ? (r.players > 1 ? `${MEDALS[r.place - 1] || ''} ${r.place}º de ${r.players}` : 'sozinho') : 'solo'),
+              h('span', { class: 'r-place' }, r.kind !== 'solo' ? `${r.kind === 'arena' ? '🌐 ' : ''}${r.players > 1 ? `${MEDALS[r.place - 1] || ''} ${r.place}º de ${r.players}` : 'sozinho'}` : 'solo'),
               h('strong', {}, `${r.score} pts`),
               h('small', { class: 'muted' }, fmtDate(r.at)))))
           : h('p', { class: 'empty' }, 'Jogue uma partida em grupo ou um modo solo com ranking para ver seu histórico aqui.')),
+      achievementsCard(stats.achievements),
+      themesCard(stats.achievements),
       identity,
       h('div', { class: 'card' },
         h('h3', {}, '📲 Usar este perfil em outro aparelho'),
@@ -197,4 +209,57 @@ function variantLabel(mode, v) {
   const m = MULTI_MODES[mode];
   const spec = m?.options.size || m?.options.difficulty;
   return spec ? formatOption(spec, typeof spec.default === 'number' ? Number(v) : v) : v;
+}
+
+// Ligas da temporada (mês): nível de cada pessoa nas partidas da Arena Pública.
+async function renderLeagues(content, online, meId) {
+  if (!online) { content.replaceChildren(h('p', { class: 'notice' }, 'As ligas precisam do servidor do Trama (npm start).')); return; }
+  content.replaceChildren(h('p', { class: 'loading' }, 'Carregando…'));
+  try {
+    const r = await api('ligas');
+    const ladder = h('div', { class: 'ladder' }, LEAGUES.map((l) => h('div', { class: `ladder-step ${r.voce && r.voce.league === l.key ? 'me' : ''}` }, h('span', {}, l.icon), h('strong', {}, l.name), h('small', {}, `${l.min}+`))));
+    content.replaceChildren(
+      h('h3', {}, `Temporada de ${seasonLabel(r.temporada)}`),
+      h('p', { class: 'hint' }, 'Todo mundo começa em 1000 (Bronze). O nível só muda nas partidas da ⚡ Arena Pública: ganhar de quem tem nível maior vale mais. Zera a cada mês.'),
+      ladder,
+      r.voce ? h('p', { class: 'you-pos' }, `${leagueOf(r.voce.rating).icon} Você: nível ${r.voce.rating} · ${leagueOf(r.voce.rating).name} · ${r.voce.games} partida(s) na Arena`) : '',
+      r.rows.length
+        ? h('table', { class: 'ranking global' },
+            h('thead', {}, h('tr', {}, h('th', {}, '#'), h('th', {}, 'Jogador'), h('th', {}, 'Nível'), h('th', {}, 'Liga'))),
+            h('tbody', {}, r.rows.map((x) => h('tr', { class: x.profileId === meId ? 'me' : '' },
+              h('td', { class: 'pos' }, MEDALS[x.pos - 1] || x.pos),
+              h('td', {}, h('span', { class: 'rank-avatar' }, x.avatar), ' ', x.name, x.profileId === meId ? h('small', { class: 'muted' }, ' (você)') : ''),
+              h('td', { class: 'num' }, x.rating),
+              h('td', {}, `${leagueOf(x.rating).icon} ${leagueOf(x.rating).name}`)))))
+        : h('p', { class: 'empty' }, 'Ninguém jogou na Arena nesta temporada ainda. Seja o primeiro!'));
+  } catch (e) {
+    content.replaceChildren(h('p', { class: 'notice' }, e.message));
+  }
+}
+
+function achievementsCard(list = []) {
+  const got = new Map(list.map((a) => [a.key, a.at]));
+  return h('div', { class: 'card' },
+    h('h3', {}, `🏅 Conquistas (${got.size}/${ACHIEVEMENTS.length})`),
+    h('div', { class: 'achv-grid' }, ACHIEVEMENTS.map((a) => h('div', { class: `achv ${got.has(a.key) ? 'got' : 'locked'}`, title: a.desc },
+      h('span', { class: 'achv-icon' }, got.has(a.key) ? a.icon : '🔒'),
+      h('strong', {}, a.name),
+      h('small', {}, got.has(a.key) ? `Conquistada em ${fmtDate(got.get(a.key))}` : a.desc)))));
+}
+
+function themesCard(list = []) {
+  const unlocked = new Set(unlockedThemes(list.map((a) => a.key)));
+  const wrap = h('div', { class: 'themes' });
+  const draw = () => wrap.replaceChildren(...THEMES.map((t) => {
+    const ok = unlocked.has(t.key);
+    return h('button', {
+      class: `theme-opt ${currentTheme() === t.key ? 'on' : ''} ${ok ? '' : 'locked'}`,
+      disabled: !ok,
+      title: ok ? t.name : `Desbloqueie com a conquista "${achievementByKey[t.unlock]?.name}"`,
+      onclick: () => { applyTheme(t.key); draw(); },
+    }, h('span', { class: 'swatch', style: `background: linear-gradient(135deg, ${t.swatch[0]} 50%, ${t.swatch[1]} 50%)` }), h('span', {}, ok ? t.name : `🔒 ${t.name}`),
+      ok ? '' : h('small', {}, achievementByKey[t.unlock]?.name || ''));
+  }));
+  draw();
+  return h('div', { class: 'card' }, h('h3', {}, '🎨 Temas'), h('p', { class: 'hint' }, 'Novos temas se desbloqueiam com conquistas.'), wrap);
 }

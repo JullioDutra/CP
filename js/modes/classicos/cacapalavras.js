@@ -28,6 +28,7 @@ export default {
     const pool = rng.shuffle(TEMAS[temaNome]);
     const { grid, placed } = buildWordSearch(rng, pool);
     const foundIds = new Set();
+    const items = [];
     let score = 0;
 
     const top = hud([['time', 'Tempo'], ['score', 'Pontos'], ['count', 'Achadas']]);
@@ -72,6 +73,7 @@ export default {
         foundIds.add(k);
         const pts = placed[k].word.length * 10;
         score += pts;
+        items.push({ label: placed[k].display, pts });
         const hue = (foundIds.size * 47) % 360;
         placed[k].cells.forEach((i) => { cells[i].classList.add('found'); cells[i].style.setProperty('--hue', hue); });
         listEl.querySelector(`[data-k="${k}"]`).classList.add('done');
@@ -96,11 +98,12 @@ export default {
       ended = true;
       timer.stop();
       let bonus = 0;
-      if (all) { bonus = Math.ceil(timer.remaining) * 2; score += bonus; }
+      if (all) { bonus = Math.ceil(timer.remaining) * 2; score += bonus; items.push({ label: '⏱ Bônus', pts: bonus }); }
       placed.forEach((p, k) => { if (!foundIds.has(k)) p.cells.forEach((i) => cells[i].classList.add('reveal')); });
       board.classList.add('disabled');
       api.end({
         score,
+        revealItems: items,
         summary: [['Tema', temaNome], ['Achadas', `${foundIds.size}/${placed.length}`], ['Bônus de tempo', bonus]],
         extra: h('p', {}, 'Palavras não encontradas ficaram destacadas na grade.'),
       });

@@ -43,6 +43,7 @@ export default {
     const { grid, words, bonus } = dailyPuzzle(day);
     const found = new Set();
     const paths = {};
+    const items = [];
     let score = 0;
 
     const top = hud([['time', 'Tempo'], ['score', 'Pontos'], ['count', 'Palavras']]);
@@ -65,6 +66,7 @@ export default {
         const pts = dailyPoints(w, path, bonus);
         score += pts;
         panel.add(w, pts, v.ai);
+        items.push({ label: w, pts, ai: v.ai });
         top.set('score', score);
         top.set('count', found.size);
         toast(root, `+${pts}`, 'good');
@@ -89,6 +91,7 @@ export default {
       }
       api.end({
         score,
+        revealItems: items,
         ranked: !practice,
         detail: day,
         summary: [['Dia', day.split('-').reverse().join('/')], ['Palavras', `${found.size}/${words.length}`], ['Partida', practice ? 'Treino (não conta)' : 'Oficial']],

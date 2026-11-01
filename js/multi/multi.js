@@ -2,9 +2,12 @@
 import { h, fmtTime, toast } from '../core/ui.js';
 import { createWordGrid } from '../core/wordgrid.js';
 import { POINTS_HINT } from '../core/letters.js';
-import { AVATARS, MULTI_MODES, PLAYER_HUES, formatOption } from '../core/multimodes.js';
+import { AVATARS, MULTI_MODES, PLAYER_HUES, formatOption, TEAMS, REACTIONS } from '../core/multimodes.js';
+import { leagueOf } from '../core/leagues.js';
+import { achievementByKey } from '../core/achievements.js';
 import { getPlayerName, addScore } from '../core/ranking.js';
 import { getAvatar, saveIdentity, api } from '../core/profile.js';
+import { markSeenAchievements } from '../core/achv-toast.js';
 import { play, muteButton } from '../core/sound.js';
 import { createNet } from './net.js';
 import { createWsBoard } from './wsboard.js';
@@ -105,7 +108,21 @@ function onMessage(msg) {
     showHome({ error: 'Essa sala não existe mais. Crie uma nova!' });
   } else if (msg.t === 'left') {
     store.set(SESSION_KEY, null);
+  } else if (msg.t === 'reaction') {
+    showReaction(msg);
   }
+}
+
+// Reações rápidas: o emoji sobe pela tela de todo mundo (inclusive no telão).
+function showReaction({ emoji, avatar, name }) {
+  if (!root?.isConnected) return;
+  const el = h('div', { class: 'float-react', style: `left:${10 + Math.random() * 80}%` }, h('span', { class: 'fr-emoji' }, emoji), h('small', {}, `${avatar} ${name}`));
+  root.append(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+function reactionsBar() {
+  return h('div', { class: 'reactions' }, REACTIONS.map((e) => h('button', { class: 'react-btn', type: 'button', 'aria-label': `Reagir ${e}`, onclick: () => net?.send({ t: 'react', emoji: e }) }, e)));
 }
 
 function phaseSounds(prev, s) {
@@ -135,11 +152,28 @@ export function openMulti() {
   showHome({ code: urlCode });
 }
 
-function showConnecting() {
-  ctx.screen(h('p', { class: 'loading' }, 'Conectando à sala…'));
+// Arena Pública: entra numa partida com desconhecidos (sem código).
+export async function openArena() {
+  const name = getPlayerName();
+  if (!name) { showHome({ arena: true }); return; }
+  store.set(SESSION_KEY, null);
+  showConnecting('Procurando partida na Arena…');
+  const avatar = getAvatar();
+  const prof = await saveIdentity(name, avatar);
+  ensureNet((err) => showHome({ arena: true, error: err })).send({ t: 'quick', name, avatar, profile: prof?.token });
 }
 
-function showHome({ code = '', error = '' } = {}) {
+async function requeueArena() {
+  const p = me();
+  const prof = await saveIdentity(p?.name || getPlayerName() || 'Jogador', p?.avatar || getAvatar());
+  net.send({ t: 'quick', name: p?.name || getPlayerName(), avatar: p?.avatar || getAvatar(), profile: prof?.token });
+}
+
+function showConnecting(text = 'Conectando à sala…') {
+  ctx.screen(h('p', { class: 'loading' }, text));
+}
+
+function showHome({ code = '', error = '', arena = false } = {}) {
   state = null;
   view = null;
   let avatar = getAvatar();
@@ -180,7 +214,9 @@ function showHome({ code = '', error = '' } = {}) {
       h('label', { class: 'field' }, h('span', {}, 'Nome'), nameInput),
       h('div', { class: 'field' }, h('span', {}, 'Avatar'), h('div', { class: 'avatar-grid' }, avatars)),
       errEl,
-      h('div', { class: 'row-actions center' }, h('button', { class: 'btn big', onclick: () => go({ t: 'create' }) }, 'Criar sala')),
+      arena
+        ? h('div', { class: 'row-actions center' }, h('button', { class: 'btn big', onclick: () => go({ t: 'quick' }) }, '⚡ Entrar na Arena'))
+        : h('div', { class: 'row-actions center' }, h('button', { class: 'btn big', onclick: () => go({ t: 'create' }) }, 'Criar sala'), h('button', { class: 'btn ghost big', onclick: () => go({ t: 'quick' }) }, '⚡ Arena Pública')),
       h('div', { class: 'divider' }, h('span', {}, 'ou entre com um código')),
       h('form', { class: 'join-form', onsubmit: (e) => { e.preventDefault(); go({ t: 'join', code: codeInput.value }); } }, codeInput, h('button', { class: 'btn', type: 'submit' }, 'Entrar')),
       h('p', { class: 'section-sub center' }, 'Sem cadastro: só nome e avatar. Quem criar a sala escolhe o modo e manda o código ou o link para os amigos.'),
@@ -235,11 +271,17 @@ function mountRoom() {
       el.textContent = el.dataset.clock === 'count' ? Math.max(1, Math.ceil(left / 1000)) : fmtTime(left / 1000);
       el.classList.toggle('danger', el.dataset.clock !== 'count' && left < 10000);
     });
-    // bipes: contagem 3-2-1 e últimos 10 segundos
-    const sec = Math.ceil(left / 1000);
+    // Arena Sobrevivência: a sua vida
+    const life = state?.play?.lifeEndsAt != null ? (state.play.alive ? state.play.lifeEndsAt - serverNow() : 0) : null;
+    root.querySelectorAll('[data-life]').forEach((el) => {
+      el.textContent = state.play.alive ? fmtTime(life / 1000) : '💀';
+      el.classList.toggle('danger', life < 10000);
+    });
+    // bipes: contagem 3-2-1 e últimos 10 segundos (da rodada ou da sua vida)
+    const sec = Math.ceil((life ?? left) / 1000);
     if (state?.endsAt && sec !== lastSecond && sec > 0) {
       if (state.phase === 'countdown' && sec <= 3) play('count');
-      if (state.phase === 'playing' && sec <= 10) play('tick');
+      if (state.phase === 'playing' && sec <= 10 && (life == null || state.play.alive)) play('tick');
     }
     lastSecond = sec;
     raf = requestAnimationFrame(loop);
@@ -313,11 +355,31 @@ function liveBoard(s, { title = 'Placar ao vivo', hint = null } = {}) {
 }
 
 // ----- saguão (jogador) -----
+function arenaLobby(s, el) {
+  const mode = modeOf(s);
+  const need = Math.max(0, 2 - s.players.length);
+  el.replaceChildren(
+    h('div', { class: 'card code-card arena-card' },
+      h('p', {}, '🌐 Arena Pública'),
+      h('h2', {}, `${mode.icon} ${mode.name}`),
+      h('p', { class: 'hint' }, Object.entries(mode.options).map(([k, spec]) => `${spec.label}: ${formatOption(spec, s.options[k])}`).join(' · ')),
+      s.endsAt
+        ? h('div', { class: 'arena-count' }, 'Começa em ', h('strong', { 'data-clock': 'count' }, ''), 's')
+        : h('div', { class: 'arena-count waiting' }, need ? `Esperando mais ${need} pessoa${need > 1 ? 's' : ''}…` : 'Preparando…')),
+    h('div', { class: 'card' },
+      h('h3', {}, `Na fila (${s.players.length}/8)`),
+      h('ul', { class: 'players' }, s.players.map((p) => playerRow(p, ''))),
+      h('p', { class: 'hint' }, 'Partidas da Arena valem para o seu nível na liga da temporada.')),
+    reactionsBar(),
+    h('ul', { class: 'rules' }, mode.rules.map((r) => h('li', {}, r))));
+}
+
 function lobbyView() {
   const el = h('div', { class: 'lobby' });
   return {
     el,
     update(s) {
+      if (s.public) { arenaLobby(s, el); return; }
       const host = isHost();
       const link = joinLink(s.code);
       const mode = modeOf(s);
@@ -355,7 +417,8 @@ function lobbyView() {
           host
             ? h('button', { class: 'btn big', onclick: () => net.send({ t: 'start' }) }, `Começar partida (${readyCount}/${s.players.length} prontos)`)
             : h('button', { class: `btn big ${me()?.ready ? 'ghost' : ''}`, onclick: () => net.send({ t: 'ready', ready: !me()?.ready }) }, me()?.ready ? 'Não estou pronto' : 'Estou pronto!')),
-        !host ? h('p', { class: 'section-sub center' }, 'Aguardando o anfitrião começar a partida…') : s.players.length < 2 ? h('p', { class: 'section-sub center' }, 'Mande o código para os amigos. Dá para começar sozinho para testar.') : ''
+        !host ? h('p', { class: 'section-sub center' }, 'Aguardando o anfitrião começar a partida…') : s.players.length < 2 ? h('p', { class: 'section-sub center' }, 'Mande o código para os amigos. Dá para começar sozinho para testar.') : '',
+        reactionsBar()
       );
     },
   };
@@ -402,7 +465,8 @@ function countdownView(s) {
     el: h('div', { class: 'countdown' },
       h('p', {}, `Rodada ${s.round + 1} de ${s.options.rounds}`),
       h('div', { class: 'count-num', 'data-clock': 'count' }, '3'),
-      h('p', { class: 'section-sub' }, `${modeOf(s).name} — ${modeOf(s).short}`)),
+      h('p', { class: 'section-sub' }, `${modeOf(s).name} — ${modeOf(s).short}`),
+      s.teams && s.teams.of[s.you] ? h('p', { class: 'team-banner', style: `--hue:${TEAMS[s.teams.of[s.you]].hue}` }, `Você está no ${TEAMS[s.teams.of[s.you]].avatar} ${TEAMS[s.teams.of[s.you]].name}`) : ''),
     update() {},
   };
 }
@@ -424,21 +488,42 @@ function gradePlay(s) {
       const slow = setTimeout(() => toast(root, `Verificando ${w.toUpperCase()} com IA…`), 400);
       const r = await net.act('submit', { word: w, path });
       clearTimeout(slow);
-      if (r.ok) toast(root, `${r.ai ? '✨ IA confirmou! ' : ''}${r.mult > 1 ? `×${r.mult}! ` : ''}+${r.pts}`, 'good');
+      if (r.ok) toast(root, `${r.ai ? '✨ IA confirmou! ' : ''}${r.mult > 1 ? `×${r.mult}! ` : ''}+${r.pts}${r.gain ? ` · ❤️+${r.gain}s` : ''}`, 'good');
       else toast(root, r.reason, r.dup ? 'dup' : 'bad');
       return r;
     },
   });
+  const mode = modeOf(s);
   const myPts = h('strong', {}, '0');
   const myCount = h('strong', {}, '0');
-  const el = h('div', { class: 'playing' },
-    hudBar(s, h('div', { class: 'hud-item' }, h('span', {}, 'Pontos'), myPts), h('div', { class: 'hud-item' }, h('span', {}, 'Palavras'), myCount)),
-    h('div', { class: 'play-area' }, wg.el));
+  const aliveEl = h('strong', {}, '');
+  const teamEl = h('strong', { class: 'team-score' }, '');
+  const deadEl = h('div', { class: 'eliminated hidden' }, h('strong', {}, '💀 Você foi eliminado'), h('span', {}, 'Acompanhe quem vai sobreviver!'));
+  const hud = mode.survival
+    ? h('div', { class: 'hud' },
+        h('div', { class: 'hud-item hud-time life' }, h('span', {}, 'Sua vida'), h('strong', { 'data-life': '1' }, '')),
+        h('div', { class: 'hud-item' }, h('span', {}, 'Vivos'), aliveEl),
+        h('div', { class: 'hud-item' }, h('span', {}, 'Pontos'), myPts),
+        h('div', { class: 'hud-item' }, h('span', {}, 'Palavras'), myCount))
+    : hudBar(s,
+        mode.teams ? h('div', { class: 'hud-item' }, h('span', {}, 'Times'), teamEl) : h('div', { class: 'hud-item' }, h('span', {}, 'Pontos'), myPts),
+        h('div', { class: 'hud-item' }, h('span', {}, 'Palavras'), myCount));
+  const el = h('div', { class: 'playing' }, hud, h('div', { class: 'play-area' }, wg.el, deadEl));
   return {
     el,
     update(st) {
       myPts.textContent = me()?.roundPoints ?? 0;
       myCount.textContent = st.play?.myWords?.length ?? 0;
+      if (mode.survival) {
+        aliveEl.textContent = `${st.players.filter((p) => p.roundPoints >= 0).length}/${st.players.length}`;
+        if (st.play && !st.play.alive && deadEl.classList.contains('hidden')) { deadEl.classList.remove('hidden'); wg.disable(); play('end'); }
+      }
+      if (mode.teams && st.teams) {
+        const sum = { A: st.teams.totals.A, B: st.teams.totals.B };
+        for (const p of st.players) if (p.team) sum[p.team] += p.roundPoints;
+        teamEl.textContent = `🔴 ${sum.A} × ${sum.B} 🔵`;
+        myCount.textContent = st.play?.teamWords?.length ?? myCount.textContent;
+      }
     },
     destroy: () => wg.destroy(),
   };
@@ -448,10 +533,18 @@ function gradePlay(s) {
 function gradeTv(s) {
   const bonus = s.play.bonus || {};
   const tiles = h('div', { class: 'board tv-board', style: `--n:${s.play.size}` }, s.play.grid.map((l, i) => h('div', { class: `tile ${bonus[i] ? 'has-bonus' : ''}` }, h('span', {}, l.toUpperCase()), bonus[i] ? h('em', { class: 'bonus' }, bonus[i]) : '')));
-  const board = liveBoard(s);
+  const board = liveBoard(s, { title: modeOf(s).survival ? '❤️ Vidas' : 'Placar ao vivo' });
+  const teamEl = h('div', { class: 'tv-teams' });
   return {
-    el: h('div', { class: 'playing' }, hudBar(s, h('div', { class: 'hud-item' }, h('span', {}, 'Possíveis'), h('strong', {}, s.play.possible))), h('div', { class: 'play-area' }, tiles, board.el)),
-    update: (st) => board.update(st),
+    el: h('div', { class: 'playing' }, hudBar(s, h('div', { class: 'hud-item' }, h('span', {}, 'Possíveis'), h('strong', {}, s.play.possible))), teamEl, h('div', { class: 'play-area' }, tiles, board.el)),
+    update: (st) => {
+      board.update(st);
+      if (st.teams) {
+        const sum = { A: st.teams.totals.A, B: st.teams.totals.B };
+        for (const p of st.players) if (p.team) sum[p.team] += p.roundPoints;
+        teamEl.replaceChildren(...['A', 'B'].map((k) => h('div', { class: 'tv-team', style: `--hue:${TEAMS[k].hue}` }, `${TEAMS[k].avatar} ${TEAMS[k].name}`, h('strong', {}, sum[k]))));
+      }
+    },
   };
 }
 
@@ -535,7 +628,10 @@ function resultsView(s) {
 
   if (final && !s.spectator) saveFinal(s, standings);
 
-  const podium = final
+  const teamMode = !!r.teamScores;
+  const podium = final && teamMode
+    ? h('div', { class: 'tv-teams final' }, ['A', 'B'].map((k) => h('div', { class: `tv-team ${s.teams.totals[k] >= s.teams.totals[k === 'A' ? 'B' : 'A'] ? 'win' : ''}`, style: `--hue:${TEAMS[k].hue}` }, `${TEAMS[k].avatar} ${TEAMS[k].name}`, h('strong', {}, s.teams.totals[k]))))
+    : final
     ? h('div', { class: 'podium' }, [1, 0, 2].map((i) => {
         const x = standings[i];
         if (!x) return h('div', { class: 'podium-spot empty' });
@@ -573,7 +669,8 @@ function resultsView(s) {
         avatarEl(p),
         h('strong', {}, p.name),
         h('span', { class: 'rp-round' }, `+${r.scores?.[x.id] ?? 0} na rodada`),
-        h('span', { class: 'rp-total' }, `${x.total} pts`)),
+        h('span', { class: 'rp-total' }, `${x.total} pts`),
+        x.id !== s.you && !s.spectator ? h('button', { class: 'report-btn', title: `Denunciar ${p.name}`, onclick: () => reportPlayer(p, s.code) }, '⚑') : ''),
       h('div', { class: 'wchips' }, detailFor(x.id)));
   });
 
@@ -598,26 +695,31 @@ function resultsView(s) {
 
   const actions = h('div', { class: 'row-actions center hidden' });
   const globalEl = h('div', { class: 'global-pos' });
+  const progressEl = h('div', { class: 'global-pos' }); // nível e conquistas novas
   const statsPanel = h('div', { class: 'stats-panel hidden' }, extra, legend, h('div', { class: 'result-list' }, rows));
   const statsBtn = h('button', { class: 'btn ghost', onclick: () => {
     const open = statsPanel.classList.toggle('hidden') === false;
     statsBtn.textContent = open ? 'Fechar estatísticas' : '📊 Mais estatísticas';
     if (open) statsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } }, '📊 Mais estatísticas');
-  const after = h('div', { class: 'after-reveal hidden' }, podium, globalEl, h('div', { class: 'row-actions center' }, statsBtn), statsPanel);
+  const after = h('div', { class: 'after-reveal hidden' }, podium, progressEl, globalEl, h('div', { class: 'row-actions center' }, statsBtn), statsPanel);
 
   // 1º a animação; depois pódio, posição global, estatísticas e botões
+  const teamRound = teamMode ? teamRoundFor(r, s) : null;
   const reveal = createReveal({
-    round: r,
-    players: s.players.filter((p) => r.scores && p.id in r.scores),
-    totals: Object.fromEntries(s.standings.map((x) => [x.id, x.total])),
-    you: s.you,
-    hueOf,
+    round: teamRound || r,
+    players: teamMode ? ['A', 'B'].map((k) => ({ id: k, name: TEAMS[k].name, avatar: TEAMS[k].avatar })) : s.players.filter((p) => r.scores && p.id in r.scores),
+    totals: teamMode ? { ...s.teams.totals } : Object.fromEntries(s.standings.map((x) => [x.id, x.total])),
+    you: teamMode ? s.teams.of[s.you] : s.you,
+    hueOf: teamMode ? (k) => TEAMS[k].hue : hueOf,
     final,
     onDone: () => {
       after.classList.remove('hidden');
       actions.classList.remove('hidden');
-      if (final && !s.spectator) showGlobalPosition(s, globalEl);
+      if (final && !s.spectator) {
+        showGlobalPosition(s, globalEl);
+        showRatingAndAchievements(s, progressEl);
+      }
     },
   });
 
@@ -625,7 +727,8 @@ function resultsView(s) {
     h('h2', {}, final ? '🏆 Fim de jogo!' : `Fim da rodada ${s.round} de ${s.options.rounds}`),
     reveal.el,
     after,
-    actions);
+    actions,
+    s.spectator ? '' : reactionsBar());
 
   return {
     el,
@@ -634,6 +737,14 @@ function resultsView(s) {
       if (st.spectator) {
         const hp = playerById(st.hostId);
         actions.replaceChildren(h('p', { class: 'section-sub' }, hp ? `${hp.name} 👑 ${final ? 'pode iniciar a revanche' : 'inicia a próxima rodada'} pelo celular.` : ''));
+        return;
+      }
+      if (st.public) {
+        actions.replaceChildren(
+          final
+            ? h('button', { class: 'btn big', onclick: requeueArena }, '⚡ Jogar outra na Arena')
+            : h('p', { class: 'section-sub' }, 'Próxima rodada em ', h('strong', { 'data-clock': 'count' }, ''), 's'),
+          h('button', { class: 'btn ghost', onclick: leaveRoom }, 'Sair'));
         return;
       }
       actions.replaceChildren(
@@ -680,4 +791,44 @@ async function showGlobalPosition(s, el) {
     const r = await api(q);
     if (r.voce) el.replaceChildren(h('p', {}, '🌍 Sua melhor partida está em ', h('strong', {}, `${r.voce.pos}º lugar`), ' no ranking global da semana (', `${r.voce.score} pts`, ').'));
   } catch { /* sem servidor de ranking */ }
+}
+
+// Times: a animação mostra o time ganhando pontos (palavras dos integrantes somadas).
+function teamRoundFor(r, s) {
+  const players = { A: { words: [] }, B: { words: [] } };
+  for (const [id, d] of Object.entries(r.players || {})) {
+    const t = r.teamOf?.[id];
+    if (t) players[t].words.push(...d.words);
+  }
+  return { ...r, players, scores: { ...r.teamScores }, extras: [] };
+}
+
+// Nível (Elo) da Arena e conquistas novas, depois do pódio.
+function showRatingAndAchievements(s, el) {
+  const mine = s.players.find((p) => p.id === s.you);
+  if (mine?.rating) {
+    const r = mine.rating;
+    const before = leagueOf(r.before);
+    const after = leagueOf(r.after);
+    el.append(h('p', { class: `rating-change ${r.delta >= 0 ? 'up' : 'down'}` },
+      `${after.icon} Nível ${r.before} → `, h('strong', {}, String(r.after)), ` (${r.delta >= 0 ? '+' : ''}${r.delta})`,
+      before.key !== after.key ? h('span', { class: 'league-up' }, r.delta > 0 ? ` · Subiu para ${after.name}!` : ` · Caiu para ${after.name}`) : ` · ${after.name}`));
+  }
+  const fresh = (s.myAchievements || []).map((k) => achievementByKey[k]).filter(Boolean);
+  if (fresh.length) {
+    markSeenAchievements(fresh.map((a) => a.key));
+    el.append(h('div', { class: 'achv-new' }, h('p', {}, '🏅 Conquista nova!'), h('div', { class: 'achv-list' }, fresh.map((a) => h('span', { class: 'achv-pill' }, `${a.icon} ${a.name}`)))));
+    play('win');
+  }
+}
+
+async function reportPlayer(p, room) {
+  const motivo = prompt(`Denunciar ${p.name}? Conte rapidamente o motivo (nome ofensivo, trapaça, etc.):`);
+  if (motivo == null) return;
+  try {
+    await api('denuncia', { method: 'POST', body: { nome: p.name, sala: room, motivo } });
+    toast(root, 'Denúncia enviada. Obrigado!', 'good');
+  } catch (e) {
+    toast(root, e.message, 'bad');
+  }
 }

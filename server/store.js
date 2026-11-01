@@ -6,6 +6,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { START_RATING, eloDeltas, leagueOf, seasonOf } from '../js/core/leagues.js';
+import { ACHIEVEMENTS } from '../js/core/achievements.js';
 
 const hash = (t) => createHash('sha256').update(String(t)).digest('hex');
 const newId = (n = 8) => randomBytes(n).toString('hex');
@@ -48,6 +50,16 @@ export function createStore(file = ':memory:', { now = Date.now } = {}) {
       data TEXT NOT NULL, started_at INTEGER NOT NULL, duration INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0, ranked INTEGER NOT NULL DEFAULT 1
     );
     CREATE INDEX IF NOT EXISTS tk_profile ON tickets(profile_id, mode, variant);
+    CREATE TABLE IF NOT EXISTS ratings (
+      profile_id TEXT NOT NULL, season TEXT NOT NULL, rating REAL NOT NULL, peak REAL NOT NULL, games INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (profile_id, season)
+    );
+    CREATE TABLE IF NOT EXISTS achievements (
+      profile_id TEXT NOT NULL, key TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (profile_id, key)
+    );
+    CREATE TABLE IF NOT EXISTS reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, reporter_id TEXT, reported_id TEXT, reported_name TEXT, room TEXT, reason TEXT, at INTEGER NOT NULL
+    );
   `);
 
   const q = {
@@ -77,18 +89,31 @@ export function createStore(file = ':memory:', { now = Date.now } = {}) {
   const winsSql = db.prepare(`
     SELECT mp.profile_id AS profileId, COALESCE(pr.name, mp.name) AS name, COALESCE(pr.avatar, mp.avatar) AS avatar, COUNT(*) AS wins, SUM(mp.score) AS points
     FROM match_players mp JOIN matches m ON m.id = mp.match_id LEFT JOIN profiles pr ON pr.id = mp.profile_id
-    WHERE m.kind = 'multi' AND m.players_count >= 2 AND mp.place = 1 AND mp.created_at >= ? AND mp.profile_id IS NOT NULL
+    WHERE m.kind IN ('multi', 'arena') AND m.players_count >= 2 AND mp.place = 1 AND mp.created_at >= ? AND mp.profile_id IS NOT NULL
     GROUP BY mp.profile_id ORDER BY wins DESC, points DESC LIMIT ?`);
   const statsSql = db.prepare(`
     SELECT COUNT(*) AS matches, COALESCE(MAX(score), 0) AS best, COALESCE(ROUND(AVG(score)), 0) AS avg,
       COALESCE(SUM(words), 0) AS words, COALESCE(SUM(unique_words), 0) AS uniqueWords,
       COALESCE(SUM(CASE WHEN mp.place = 1 AND m.players_count >= 2 THEN 1 ELSE 0 END), 0) AS wins,
-      COALESCE(SUM(CASE WHEN m.kind = 'multi' THEN 1 ELSE 0 END), 0) AS multi
+      COALESCE(SUM(CASE WHEN m.kind IN ('multi', 'arena') THEN 1 ELSE 0 END), 0) AS multi,
+      COALESCE(SUM(CASE WHEN m.kind = 'arena' THEN 1 ELSE 0 END), 0) AS arena
     FROM match_players mp JOIN matches m ON m.id = mp.match_id WHERE mp.profile_id = ?`);
   const longestSql = db.prepare(`SELECT longest FROM match_players WHERE profile_id = ? AND longest IS NOT NULL ORDER BY LENGTH(longest) DESC, created_at ASC LIMIT 1`);
   const recentSql = db.prepare(`
     SELECT m.mode, m.variant, m.kind, m.players_count AS players, mp.score, mp.place, mp.words, mp.longest, mp.created_at AS at
     FROM match_players mp JOIN matches m ON m.id = mp.match_id WHERE mp.profile_id = ? ORDER BY mp.created_at DESC LIMIT ?`);
+  const q2 = {
+    getRating: db.prepare('SELECT rating, peak, games FROM ratings WHERE profile_id = ? AND season = ?'),
+    upsertRating: db.prepare(`INSERT INTO ratings (profile_id, season, rating, peak, games) VALUES (?, ?, ?, ?, 1)
+      ON CONFLICT(profile_id, season) DO UPDATE SET rating = excluded.rating, peak = MAX(peak, excluded.rating), games = games + 1`),
+    leagueTable: db.prepare(`SELECT r.profile_id AS profileId, p.name, p.avatar, r.rating, r.games FROM ratings r JOIN profiles p ON p.id = r.profile_id
+      WHERE r.season = ? ORDER BY r.rating DESC, r.games DESC LIMIT ?`),
+    achs: db.prepare('SELECT key, at FROM achievements WHERE profile_id = ? ORDER BY at'),
+    addAch: db.prepare('INSERT OR IGNORE INTO achievements (profile_id, key, at) VALUES (?, ?, ?)'),
+    dailyDays: db.prepare(`SELECT DISTINCT m.variant AS day FROM match_players mp JOIN matches m ON m.id = mp.match_id
+      WHERE mp.profile_id = ? AND m.mode = 'novo-diario' ORDER BY day DESC LIMIT 400`),
+    addReport: db.prepare('INSERT INTO reports (reporter_id, reported_id, reported_name, room, reason, at) VALUES (?, ?, ?, ?, ?, ?)'),
+  };
   const favSql = db.prepare(`SELECT m.mode, COUNT(*) AS n FROM match_players mp JOIN matches m ON m.id = mp.match_id WHERE mp.profile_id = ? GROUP BY m.mode ORDER BY n DESC LIMIT 1`);
 
   return {
@@ -131,7 +156,11 @@ export function createStore(file = ':memory:', { now = Date.now } = {}) {
         db.exec('ROLLBACK');
         throw e;
       }
-      return id;
+      // Elo só na Arena Pública (partidas contra desconhecidos)
+      const ratings = m.kind === 'arena' ? this.applyElo(m.players) : {};
+      const achievements = {};
+      for (const p of m.players) if (p.profileId) achievements[p.profileId] = this.checkAchievements(p.profileId, p);
+      return { id, ratings, achievements };
     },
 
     leaderboard({ mode, variant = null, period = 'semana', limit = 20 }) {
@@ -152,7 +181,76 @@ export function createStore(file = ':memory:', { now = Date.now } = {}) {
 
     profileStats(profileId) {
       const s = statsSql.get(profileId);
-      return { ...s, longest: longestSql.get(profileId)?.longest || null, favorite: favSql.get(profileId)?.mode || null, recent: recentSql.all(profileId, 15) };
+      return {
+        ...s,
+        longest: longestSql.get(profileId)?.longest || null,
+        favorite: favSql.get(profileId)?.mode || null,
+        recent: recentSql.all(profileId, 15),
+        streak: this.streak(profileId),
+        rating: this.ratingOf(profileId),
+        achievements: q2.achs.all(profileId),
+      };
+    },
+
+    // ---------- sequência de dias no Desafio do Dia ----------
+    streak(profileId) {
+      const days = q2.dailyDays.all(profileId).map((r) => r.day);
+      if (!days.length) return 0;
+      const dayMs = 86400000;
+      const today = Date.parse(new Date(now() - 3 * 3600 * 1000).toISOString().slice(0, 10));
+      let expected = Date.parse(days[0]);
+      if (today - expected > dayMs) return 0; // a última foi antes de ontem: sequência quebrou
+      let n = 0;
+      for (const d of days) {
+        if (Date.parse(d) !== expected) break;
+        n++;
+        expected -= dayMs;
+      }
+      return n;
+    },
+
+    // ---------- ligas (Elo por temporada mensal) ----------
+    ratingOf(profileId, season = seasonOf(now())) {
+      const r = q2.getRating.get(profileId, season);
+      const rating = r ? Math.round(r.rating) : START_RATING;
+      return { season, rating, peak: r ? Math.round(r.peak) : START_RATING, games: r?.games || 0, league: leagueOf(rating).key };
+    },
+    /** @param {{profileId:string, place:number}[]} players  @returns {Object<string, {before:number, after:number, delta:number, league:string}>} */
+    applyElo(players) {
+      const season = seasonOf(now());
+      const list = players.filter((p) => p.profileId).map((p) => ({ id: p.profileId, place: p.place, rating: this.ratingOf(p.profileId, season).rating }));
+      if (list.length < 2) return {};
+      const deltas = eloDeltas(list);
+      const out = {};
+      for (const p of list) {
+        const after = Math.max(0, p.rating + deltas[p.id]);
+        q2.upsertRating.run(p.id, season, after, after);
+        out[p.id] = { before: p.rating, after, delta: deltas[p.id], league: leagueOf(after).key };
+      }
+      return out;
+    },
+    leagueTable({ season = seasonOf(now()), limit = 30 } = {}) {
+      return q2.leagueTable.all(season, limit).map((r, i) => ({ pos: i + 1, ...r, rating: Math.round(r.rating), league: leagueOf(r.rating).key }));
+    },
+
+    // ---------- conquistas ----------
+    /** Confere as conquistas depois de uma partida. Retorna as novas. */
+    checkAchievements(profileId, match = null) {
+      const have = new Set(q2.achs.all(profileId).map((a) => a.key));
+      const ctx = { stats: { ...statsSql.get(profileId), streak: this.streak(profileId) }, rating: this.ratingOf(profileId), match };
+      const fresh = [];
+      for (const a of ACHIEVEMENTS) {
+        if (have.has(a.key)) continue;
+        let ok = false;
+        try { ok = a.check(ctx); } catch { ok = false; }
+        if (ok) { q2.addAch.run(profileId, a.key, now()); fresh.push(a.key); }
+      }
+      return fresh;
+    },
+
+    // ---------- denúncias ----------
+    report({ reporterId, reportedId, reportedName, room, reason }) {
+      q2.addReport.run(reporterId || null, reportedId || null, String(reportedName || '').slice(0, 40), room || null, String(reason || '').slice(0, 200), now());
     },
 
     // ---------- tickets das partidas solo verificadas ----------
