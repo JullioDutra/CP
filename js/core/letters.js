@@ -1,5 +1,5 @@
 // Lógica das grades de letras: sorteio ponderado, busca de caminhos e solucionador.
-import { allWords } from './dict.js';
+import { allWords, isCommon, commonRankOf } from './dict.js';
 
 // Frequência aproximada das letras no português (Q e H reduzidos de propósito).
 const WEIGHTS = {
@@ -77,7 +77,8 @@ export function solve(grid, size, maxLen = 12) {
   return out;
 }
 
-export function makeGrid(rng, size, { minWords = 20, tries = 60 } = {}) {
+// Sorteia grades e fica com a que tiver mais palavras COMUNS (as que as pessoas conhecem).
+export function makeGrid(rng, size, { minWords = 20, minCommon = Math.round(minWords * 0.6), tries = 60 } = {}) {
   let best = null;
   for (let t = 0; t < tries; t++) {
     const grid = Array.from({ length: size * size }, () => randomLetter(rng));
@@ -85,8 +86,9 @@ export function makeGrid(rng, size, { minWords = 20, tries = 60 } = {}) {
     const ratio = vowels / grid.length;
     if (ratio < 0.3 || ratio > 0.55) continue;
     const found = solve(grid, size);
-    if (!best || found.length > best.words.length) best = { grid, words: found };
-    if (found.length >= minWords) break;
+    const common = found.filter(isCommon).length;
+    if (!best || common > best.common) best = { grid, words: found, common };
+    if (common >= minCommon && found.length >= minWords) break;
   }
   return best;
 }
@@ -101,3 +103,8 @@ export const wordPoints = (w) => {
   return n <= 9 ? POINTS[n] : POINTS[9] + (n - 9) * 7;
 };
 export const POINTS_HINT = '3=1 · 4=2 · 5=4 · 6=7 · 7=11 · 8=16 · 9=22 · +7 por letra extra';
+
+// Palavras comuns primeiro (as maiores antes), depois as raras.
+export function sortMissed(list) {
+  return list.slice().sort((a, b) => (isCommon(b) - isCommon(a)) || b.length - a.length || commonRankOf(a) - commonRankOf(b) || a.localeCompare(b));
+}

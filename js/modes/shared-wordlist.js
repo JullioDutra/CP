@@ -1,6 +1,8 @@
 // Painel de palavras encontradas + resumo de palavras perdidas (usado pelos modos de grade).
-import { h } from '../core/ui.js';
-import { wordPoints } from '../core/letters.js';
+import { h, toast } from '../core/ui.js';
+import { isWord } from '../core/dict.js';
+import { checkWord } from '../core/verify.js';
+import { wordPoints, sortMissed } from '../core/letters.js';
 
 export function foundPanel() {
   const list = h('ul', { class: 'found' });
@@ -8,21 +10,32 @@ export function foundPanel() {
   let n = 0;
   return {
     el: h('div', { class: 'found-panel' }, title, list),
-    add(w, pts) {
+    add(w, pts, ai = false) {
       n++;
       title.textContent = `Palavras (${n})`;
-      list.prepend(h('li', {}, w.toUpperCase(), h('small', {}, `+${pts}`)));
+      list.prepend(h('li', { title: ai ? 'Confirmada pela IA' : null }, w.toUpperCase(), ai ? ' ✨' : '', h('small', {}, `+${pts}`)));
     },
   };
 }
 
 export function missedWords(all, found, limit = 40) {
-  const missed = all.filter((w) => !found.has(w)).sort((a, b) => b.length - a.length || a.localeCompare(b));
+  const missed = sortMissed(all.filter((w) => !found.has(w)));
   if (!missed.length) return h('p', {}, 'Você encontrou todas as palavras!');
   return h(
     'div',
     { class: 'missed' },
-    h('h4', {}, `Algumas palavras que ficaram de fora (${missed.length} no total):`),
+    h('h4', {}, `Palavras que ficaram de fora (${missed.length} no total, as mais conhecidas primeiro):`),
     h('p', {}, missed.slice(0, limit).map((w) => `${w.toUpperCase()} (${wordPoints(w)})`).join(' · '))
   );
+}
+
+// Palavra fora do dicionário? Pergunta à IA (via servidor) antes de recusar.
+export async function confirmWord(root, w, isOver = () => false) {
+  if (isWord(w)) return { ok: true, ai: false };
+  toast(root, `Verificando ${w.toUpperCase()} com IA…`);
+  const r = await checkWord(w);
+  if (isOver()) return { ok: false };
+  if (!r.ok) toast(root, r.fonte === 'indisponivel' || r.fonte === 'invalida' ? `${w.toUpperCase()} não está no dicionário` : `${w.toUpperCase()} não existe (verificado pela IA)`, 'bad');
+  else toast(root, `✨ ${w.toUpperCase()} confirmada pela IA`, 'good');
+  return { ok: r.ok, ai: r.ok };
 }

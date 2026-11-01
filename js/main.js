@@ -8,7 +8,8 @@ import cacapalavras from './modes/classicos/cacapalavras.js';
 import sudoku from './modes/classicos/sudoku.js';
 import sobrevivencia from './modes/novos/sobrevivencia.js';
 import diario from './modes/novos/diario.js';
-import { initMulti, openMulti, roomCodeFromUrl, multiRankingModes } from './multi/multi.js';
+import { initMulti, openMulti, openTv, roomCodeFromUrl, tvFromUrl, multiRankingModes } from './multi/multi.js';
+import { muteButton } from './core/sound.js';
 
 const CLASSICOS = [grade, cacapalavras, sudoku];
 const NOVOS = [sobrevivencia, diario];
@@ -52,11 +53,13 @@ function showMenu() {
       'section',
       { class: 'mode-section multi' },
       h('h2', {}, '👥 Jogar com amigos ', h('span', { class: 'tag live' }, 'ao vivo')),
-      h('p', { class: 'section-sub' }, 'Todos na mesma grade, ao mesmo tempo. Sem cadastro: coloque seu nome, escolha um avatar e crie a sala.'),
+      h('p', { class: 'section-sub' }, 'Todos no mesmo jogo, ao mesmo tempo. Sem cadastro: coloque seu nome, escolha um avatar e crie a sala. Tem TV? Abra o Telão e jogue pelo celular.'),
       h(
         'div',
         { class: 'multi-cta' },
-        h('button', { class: 'btn big', onclick: () => openMulti() }, 'Criar ou entrar numa sala'),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'btn big', onclick: () => openMulti() }, 'Criar ou entrar numa sala'),
+          h('button', { class: 'btn ghost big', onclick: () => { history.replaceState(null, '', '?tela=1'); openTv(); } }, '📺 Abrir Telão')),
         h('div', { class: 'multi-modes' }, multiRankingModes.map((m) => h('span', { class: `pill ${m.category}` }, `${m.icon} ${m.name} · ${m.category === 'classico' ? 'clássico' : 'novo'}`)))
       )
     ),
@@ -117,7 +120,7 @@ function showIntro(m) {
 }
 
 function topBar(m) {
-  return h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: showMenu }, '← Menu'), h('span', {}, `${m.icon} ${m.name}`));
+  return h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: showMenu }, '← Menu'), h('span', {}, `${m.icon} ${m.name}`), h('span', { class: 'spacer' }), muteButton(h));
 }
 
 // ---------- Partida ----------
@@ -270,7 +273,8 @@ function hasSession() {
   try {
     await loadDict();
     initMulti({ screen, setCleanup, showMenu });
-    if (roomCodeFromUrl() || hasSession()) openMulti();
+    if (tvFromUrl() != null) openTv();
+    else if (roomCodeFromUrl() || hasSession()) openMulti();
     else showMenu();
   } catch (e) {
     app.replaceChildren(

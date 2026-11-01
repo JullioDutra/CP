@@ -147,9 +147,9 @@ h1, h2, h3 { line-height: 1.15; }
 
 .found-panel { background: var(--surface); border-radius: var(--radius); padding: 12px 16px; width: min(92vw, 300px); max-height: 460px; overflow: auto; box-shadow: var(--shadow); }
 .found-panel h3 { margin: 0 0 8px; font-size: 1rem; }
-.found { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 2px 12px; }
-.found li { font-weight: 600; overflow-wrap: anywhere; }
-.found small { color: var(--good); margin-left: 4px; }
+ul.found { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 2px 12px; }
+ul.found li { font-weight: 600; overflow-wrap: anywhere; }
+ul.found small { color: var(--good); margin-left: 4px; }
 
 /* ---------- Caça-palavras ---------- */
 .board.ws { --size: min(94vw, 520px); gap: 2px; }
@@ -318,3 +318,41 @@ body.offline::before {
   content: 'Reconectando…'; position: fixed; top: 0; left: 0; right: 0; z-index: 20;
   background: var(--dup); color: #fff; text-align: center; font-weight: 700; padding: 4px;
 }
+
+/* ---------- Fase 2: cores dos jogadores, corrida, sudoku duelo, telão ---------- */
+.spacer { flex: 1; }
+.mute { font-size: 1rem; }
+.player .avatar, .rp-head .avatar, .race-row .avatar {
+  display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: 50%;
+  background: hsl(var(--hue, 0) 70% 60% / 0.35); font-size: 1.2rem;
+}
+.ws-list.race li { display: flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 8px; }
+.ws-list.race li.done { text-decoration: none; color: var(--text); background: hsl(var(--hue) 70% 60% / 0.35); }
+.ws-list.race li.done::before { content: '✓ '; }
+.wchip.mine { background: hsl(var(--hue) 70% 60% / 0.45); }
+.race-bars { display: flex; flex-direction: column; gap: 14px; max-width: 860px; margin: 0 auto; }
+.race-row { display: grid; grid-template-columns: auto minmax(80px, 160px) 1fr auto; align-items: center; gap: 10px; }
+.race-track { height: 22px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.race-fill { height: 100%; background: hsl(var(--hue) 70% 55%); border-radius: 999px; transition: width 0.4s; }
+
+/* Com telão: o celular vira controle (sem placar ao lado da grade) */
+.room.with-tv .live-panel { display: none; }
+
+/* Telão */
+.room.tv { font-size: 1.15rem; }
+.room.tv .hud-item strong { font-size: 2rem; }
+.board.tv-board { --size: min(70vh, 92vw); pointer-events: none; }
+.board.ws.tv-board { --size: min(78vh, 92vw); }
+.tv-join { display: flex; gap: 28px; align-items: center; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; text-align: center; }
+.tv-join .qr { width: min(260px, 70vw); aspect-ratio: 1; background: #fff; padding: 10px; border-radius: 16px; }
+.tv-step { margin: 0 0 6px; }
+.tv-lobby .card + .card { margin-top: 0; }
+.tv-lobby > .card { margin-bottom: 16px; }
+.tv-players { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; margin: 10px 0; }
+.tv-player { display: flex; flex-direction: column; align-items: center; gap: 2px; animation: pop 0.4s; font-weight: 700; }
+.tv-player small { color: var(--muted); font-weight: 400; }
+.tv-player.off { opacity: 0.4; }
+.tv-avatar { font-size: 3rem; width: 5rem; height: 5rem; display: grid; place-items: center; border-radius: 50%; background: hsl(var(--hue) 70% 60% / 0.35); }
+.badge { margin-left: 6px; vertical-align: middle; }
+#app:has(.room.tv) { max-width: 1600px; }
+.room.tv .found-panel { width: min(92vw, 380px); max-height: 70vh; }

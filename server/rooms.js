@@ -6,7 +6,8 @@ const CODE_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ'; // sem vogais: códigos não formam
 const IDLE_MS = 10 * 60 * 1000;
 
 export class RoomManager {
-  constructor({ roomOptions = {} } = {}) {
+  constructor({ roomOptions = {}, verifier = null } = {}) {
+    this.verifier = verifier;
     this.rooms = new Map();
     this.sockets = new Map(); // code -> Map(playerId -> send)
     this.roomOptions = roomOptions;
@@ -22,7 +23,7 @@ export class RoomManager {
 
   createRoom() {
     const code = this.newCode();
-    const room = new Room(code, { ...this.roomOptions, onChange: (r) => this.broadcast(r) });
+    const room = new Room(code, { verifier: this.verifier, ...this.roomOptions, onChange: (r) => this.broadcast(r) });
     this.rooms.set(code, room);
     this.sockets.set(code, new Map());
     return room;
@@ -48,7 +49,8 @@ export class RoomManager {
   // Uma conexão de cliente. `send` envia um objeto ao navegador.
   connect(send) {
     let room = null;
-    let playerId = null;
+    let playerId = null; // jogador ou telão (tv-…)
+    let isTv = false;
 
     const attach = (r, p) => {
       room = r;
@@ -68,6 +70,17 @@ export class RoomManager {
         if (!r) throw new Error('Sala não encontrada. Confira o código.');
         attach(r, r.addPlayer(m));
       },
+      // telão: entra como espectador (não joga, só mostra)
+      watch: (m) => {
+        const r = m.create ? this.createRoom() : this.rooms.get(String(m.code || '').toUpperCase().trim());
+        if (!r) throw new Error('Sala não encontrada. Confira o código.');
+        room = r;
+        isTv = true;
+        playerId = r.addSpectator();
+        this.sockets.get(r.code).set(playerId, send);
+        send({ t: 'watching', code: r.code, id: playerId });
+        this.broadcast(r);
+      },
       resume: (m) => {
         const r = this.rooms.get(String(m.code || '').toUpperCase());
         const p = r?.resume(m.id, m.token);
@@ -79,11 +92,17 @@ export class RoomManager {
       start: () => room.start(playerId),
       next: () => room.next(playerId),
       rematch: () => room.rematch(playerId),
-      submit: (m) => send({ t: 'word', rid: m.rid, result: room.submit(playerId, m.word, m.path) }),
+      act: (m) => {
+        Promise.resolve(room.act(playerId, m))
+          .catch((e) => ({ ok: false, reason: e.message }))
+          .then((result) => send({ t: 'res', rid: m.rid, result }));
+      },
       leave: () => {
         const r = room;
         this.sockets.get(r.code)?.delete(playerId);
-        r.leave(playerId);
+        if (isTv) r.removeSpectator(playerId);
+        else r.leave(playerId);
+        isTv = false;
         room = null;
         playerId = null;
         send({ t: 'left' });
@@ -95,7 +114,8 @@ export class RoomManager {
       handle: (msg) => {
         const fn = actions[msg?.t];
         if (!fn) return;
-        if (!['create', 'join', 'resume', 'ping'].includes(msg.t) && !room) {
+        if (isTv && !['ping', 'leave'].includes(msg.t)) return; // telão só assiste
+        if (!['create', 'join', 'resume', 'watch', 'ping'].includes(msg.t) && !room) {
           send({ t: 'error', message: 'Você não está em uma sala' });
           return;
         }
@@ -109,7 +129,8 @@ export class RoomManager {
         if (!room) return;
         const conns = this.sockets.get(room.code);
         if (conns?.get(playerId) === send) conns.delete(playerId);
-        room.disconnect(playerId);
+        if (isTv) room.removeSpectator(playerId);
+        else room.disconnect(playerId);
       },
     };
   }

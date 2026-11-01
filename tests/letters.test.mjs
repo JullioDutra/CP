@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { setDictWords } from '../js/core/dict.js';
 import { makeGrid, findPath, solve } from '../js/core/letters.js';
 import { createRng } from '../js/core/rng.js';
-setDictWords(readFileSync(new URL('../data/palavras.txt', import.meta.url), 'utf8').split('\n'));
+setDictWords(readFileSync(new URL('../data/palavras.txt', import.meta.url), 'utf8').split('\n'), readFileSync(new URL('../data/comuns.txt', import.meta.url), 'utf8').split('\n'));
 const rng = createRng(42);
 for (const size of [4, 5]) {
   const t0 = performance.now();

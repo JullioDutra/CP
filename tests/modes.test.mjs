@@ -4,7 +4,7 @@ import { setDictWords } from '../js/core/dict.js';
 import { createRng } from '../js/core/rng.js';
 import { generateSudoku, countSolutions } from '../js/core/sudoku.js';
 import { findPath } from '../js/core/letters.js';
-setDictWords(readFileSync(new URL('../data/palavras.txt', import.meta.url), 'utf8').split('\n'));
+setDictWords(readFileSync(new URL('../data/palavras.txt', import.meta.url), 'utf8').split('\n'), readFileSync(new URL('../data/comuns.txt', import.meta.url), 'utf8').split('\n'));
 
 // localStorage fake para o ranking
 const store = {};

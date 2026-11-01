@@ -3,9 +3,8 @@
 import { h, createTimer, fmtTime, toast, hud } from '../../core/ui.js';
 import { createRng, seedFromString, todayKey } from '../../core/rng.js';
 import { makeGrid, wordPoints } from '../../core/letters.js';
-import { isWord } from '../../core/dict.js';
 import { createWordGrid } from '../../core/wordgrid.js';
-import { foundPanel, missedWords } from '../shared-wordlist.js';
+import { foundPanel, missedWords, confirmWord } from '../shared-wordlist.js';
 
 const TIME = 120;
 const PLAYED_KEY = 'trama.daily.played';
@@ -64,14 +63,16 @@ export default {
       size: 4,
       letters: grid,
       bonus,
-      onSubmit(w, path) {
+      async onSubmit(w, path) {
         if (w.length < 3) { toast(root, 'Mínimo 3 letras', 'bad'); return { ok: false }; }
         if (found.has(w)) { toast(root, 'Já encontrada', 'dup'); return { dup: true }; }
-        if (!isWord(w)) { toast(root, `${w.toUpperCase()} não está no dicionário`, 'bad'); return { ok: false }; }
+        const v = await confirmWord(root, w, () => ended);
+        if (!v.ok) return { ok: false };
+        if (found.has(w)) return { dup: true };
         found.add(w);
         const pts = dailyPoints(w, path, bonus);
         score += pts;
-        panel.add(w, pts);
+        panel.add(w, pts, v.ai);
         top.set('score', score);
         top.set('count', found.size);
         toast(root, `+${pts}`, 'good');

@@ -4,9 +4,8 @@
 import { h, createTimer, fmtTime, toast, hud } from '../../core/ui.js';
 import { createRng } from '../../core/rng.js';
 import { makeGrid, wordPoints, randomLetter, randomVowel, VOWELS } from '../../core/letters.js';
-import { isWord } from '../../core/dict.js';
 import { createWordGrid } from '../../core/wordgrid.js';
-import { foundPanel } from '../shared-wordlist.js';
+import { foundPanel, confirmWord } from '../shared-wordlist.js';
 
 const START = 60;
 const SHUFFLE_COST = 10;
@@ -55,16 +54,18 @@ export default {
     const wg = createWordGrid({
       size,
       letters: grid,
-      onSubmit(w, path) {
+      async onSubmit(w, path) {
         if (w.length < 3) { toast(root, 'Mínimo 3 letras', 'bad'); return { ok: false }; }
         if (found.has(w)) { toast(root, 'Já usada', 'dup'); return { dup: true }; }
-        if (!isWord(w)) { toast(root, `${w.toUpperCase()} não vale`, 'bad'); return { ok: false }; }
+        const v = await confirmWord(root, w, () => ended);
+        if (!v.ok) return { ok: false };
+        if (found.has(w)) return { dup: true };
         found.add(w);
         const pts = wordPoints(w);
         const gain = timeGain(w, timer.elapsed);
         score += pts;
         timer.add(gain);
-        panel.add(w, pts);
+        panel.add(w, pts, v.ai);
         top.set('score', score);
         toast(root, `+${pts} pts · +${gain}s`, 'good');
         if (w.length >= 6 && path) {

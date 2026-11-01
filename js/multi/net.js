@@ -25,7 +25,7 @@ export function createNet({ onMessage, onOpen, onStatus }) {
     ws.onmessage = (e) => {
       let msg;
       try { msg = JSON.parse(e.data); } catch { return; }
-      if (msg.t === 'word' && pending.has(msg.rid)) {
+      if (msg.t === 'res' && pending.has(msg.rid)) {
         pending.get(msg.rid)(msg.result);
         pending.delete(msg.rid);
         return;
@@ -50,15 +50,15 @@ export function createNet({ onMessage, onOpen, onStatus }) {
 
   return {
     send,
-    // envia uma palavra e espera a resposta do servidor
-    submit(word, path) {
+    // envia uma jogada (palavra, marcação, número…) e espera a resposta do servidor
+    act(a, payload = {}) {
       const id = ++rid;
       return new Promise((resolve) => {
         pending.set(id, resolve);
-        send({ t: 'submit', rid: id, word, path });
+        send({ t: 'act', rid: id, a, ...payload });
         setTimeout(() => {
           if (pending.has(id)) { pending.delete(id); resolve({ ok: false, reason: 'Sem resposta do servidor' }); }
-        }, 5000);
+        }, 12000); // a IA pode levar alguns segundos
       });
     },
     close() {

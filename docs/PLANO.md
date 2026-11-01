@@ -17,7 +17,9 @@ sorteia a grade, controla o relógio, valida as palavras e guarda os rankings.
 - ✅ **Fase 0:** pontuação nova, mínimo de 3 letras e tabela de pontos visível na partida.
 - ✅ **Fase 1:** servidor, salas privadas com código/link, saguão, Grade em Grupo (clássico) e
   Grade Amigável (novo), placar ao vivo, revelação, pódio, revanche e reconexão.
-- ⏭️ Próximo: **Fase 2** (Caça-Palavras Corrida, Sudoku Duelo, Modo Telão com QR code e sons).
+- ✅ **Fase 2:** Caça-Palavras Corrida, Sudoku Duelo, Modo Telão (QR code + celular como
+  controle), sons, **palavras comuns** (35 mil, com verbos conjugados) e **IA verificadora** de palavras.
+- ⏭️ Próximo: **Fase 3** (ranking global e perfis sem login).
 
 ---
 
@@ -156,11 +158,14 @@ rodar no servidor de qualquer jeito.
       validação, placar ao vivo, revelação e pódio.
 - [x] Reconexão: quem cair volta para a mesma sala com os pontos guardados.
 
-### Fase 2 — Mais modos em grupo e o modo Telão (1–2 semanas)
-- [ ] Grade Amigável, Caça-Palavras Corrida e Sudoku Duelo.
-- [ ] **Modo Telão** (`/tv`): grade grande, QR code para entrar e animação da revelação.
-- [ ] **Modo Controle** (`/play`): tela de celular só com a grade e a palavra atual.
-- [ ] Efeitos sonoros (palavra certa, repetida, últimos 10 s) com botão de mudo.
+### Fase 2 — Mais modos em grupo e o Modo Telão ✅
+- [x] Caça-Palavras Corrida e Sudoku Duelo (a Grade Amigável já estava pronta).
+- [x] **Modo Telão** (`?tela=CÓDIGO`): grade grande, QR code para entrar, placar e revelação.
+- [x] **Modo Controle**: com telão conectado, o celular mostra só a grade e as suas palavras.
+- [x] Efeitos sonoros (acerto, repetida, últimos 10 s, pódio) com botão de mudo.
+- [x] **Palavras comuns**: lista de frequência conferida pelo Hunspell; grades priorizam palavras conhecidas.
+- [x] **IA verificadora** (qualquer API compatível com OpenAI, como FreeLLM, Groq ou OpenRouter): confere palavras
+      fora do dicionário, com cache, limite de uso e script `npm run verificar`.
 
 ### Fase 3 — Ranking global e perfis (1 semana)
 - [ ] Gravar cada partida no Postgres.

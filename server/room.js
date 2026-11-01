@@ -1,16 +1,20 @@
 // Motor de uma sala multijogador. Não sabe nada de rede: recebe ações e
 // chama `onChange` quando o estado muda. O servidor é a autoridade:
-// sorteia a grade, controla o relógio e valida cada palavra.
+// sorteia o jogo, controla o relógio e valida cada jogada.
+// A lógica de cada tipo de jogo fica em server/games/*.js.
 import { randomBytes } from 'node:crypto';
 import { createRng } from '../js/core/rng.js';
-import { makeGrid, findPath, isAdjacent, wordPoints, MIN_LETTERS } from '../js/core/letters.js';
-import { isWord, normalize } from '../js/core/dict.js';
-import { MULTI_MODES, AVATARS, DEFAULT_OPTIONS, sanitizeOptions, scoreRound } from '../js/core/multimodes.js';
+import { normalize } from '../js/core/dict.js';
+import { MULTI_MODES, AVATARS, DEFAULT_OPTIONS, sanitizeOptions } from '../js/core/multimodes.js';
+import grade from './games/grade.js';
+import wordsearch from './games/wordsearch.js';
+import sudoku from './games/sudoku.js';
 
+export const GAMES = { grade, wordsearch, sudoku };
 export const MAX_PLAYERS = 12;
 const COUNTDOWN_MS = 3500;
-const GRACE_MS = 400; // tolerância de rede no fim da rodada
-const RATE_LIMIT = 10; // envios por segundo
+export const GRACE_MS = 400; // tolerância de rede no fim da rodada
+const RATE_LIMIT = 10; // ações por segundo
 const BAD_NAMES = ['porra', 'caralho', 'puta', 'merda', 'buceta', 'viado', 'cuzao', 'foder', 'fdp', 'pqp', 'arrombado'];
 
 export function cleanName(raw) {
@@ -21,27 +25,32 @@ export function cleanName(raw) {
 }
 
 export class Room {
-  constructor(code, { now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, onChange = () => {}, seed } = {}) {
+  constructor(code, { now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, onChange = () => {}, seed, verifier = null } = {}) {
     this.code = code;
     this.now = now;
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
     this.onChange = onChange;
+    this.verifier = verifier;
     this.rng = createRng(seed ?? randomBytes(4).readUInt32LE());
     this.players = new Map();
+    this.spectators = new Set(); // telões
     this.order = 0;
     this.hostId = null;
     this.options = { ...DEFAULT_OPTIONS };
     this.phase = 'lobby'; // lobby | countdown | playing | reveal | final
     this.round = 0;
-    this.grid = null;
-    this.size = 4;
-    this.possible = [];
+    this.rd = null; // dados da rodada (do jogo)
     this.endsAt = null;
     this.timer = null;
+    this.closing = false;
+    this.pending = new Set();
     this.rounds = []; // resultados de cada rodada
     this.lastActivity = now();
   }
+
+  get mode() { return MULTI_MODES[this.options.mode]; }
+  get game() { return GAMES[this.mode.game]; }
 
   // ---------- jogadores ----------
   addPlayer({ name, avatar }) {
@@ -57,15 +66,27 @@ export class Room {
       connected: true,
       ready: false,
       total: 0,
-      words: [],
-      provisional: 0,
-      submits: [],
+      rs: null, // estado do jogador na rodada
+      acts: [],
       joinOrder: this.order++,
     };
     this.players.set(p.id, p);
+    if (this.rd && this.phase === 'playing') this.game.initPlayer(p, this);
     if (!this.hostId) this.hostId = p.id;
     this.touch();
     return p;
+  }
+
+  addSpectator() {
+    const id = `tv-${randomBytes(4).toString('hex')}`;
+    this.spectators.add(id);
+    this.touch();
+    return id;
+  }
+
+  removeSpectator(id) {
+    this.spectators.delete(id);
+    this.touch();
   }
 
   resume(id, token) {
@@ -98,7 +119,7 @@ export class Room {
   }
 
   get connectedCount() {
-    return [...this.players.values()].filter((p) => p.connected).length;
+    return [...this.players.values()].filter((p) => p.connected).length + this.spectators.size;
   }
 
   // ---------- saguão ----------
@@ -121,6 +142,7 @@ export class Room {
     if (this.phase !== 'lobby') throw new Error('A partida já começou');
     this.round = 0;
     this.rounds = [];
+    this.rd = null;
     for (const p of this.players.values()) p.total = 0;
     this.countdown();
   }
@@ -137,8 +159,8 @@ export class Room {
     this.phase = 'lobby';
     this.round = 0;
     this.rounds = [];
-    this.grid = null;
-    for (const p of this.players.values()) Object.assign(p, { total: 0, ready: false, words: [], provisional: 0 });
+    this.rd = null;
+    for (const p of this.players.values()) Object.assign(p, { total: 0, ready: false, rs: null });
     this.touch();
   }
 
@@ -156,76 +178,54 @@ export class Room {
 
   startRound() {
     this.round++;
-    this.size = this.options.size;
-    const { grid, words } = makeGrid(this.rng, this.size, { minWords: this.size === 4 ? 40 : 90 });
-    this.grid = grid;
-    this.possible = words;
-    for (const p of this.players.values()) { p.words = []; p.provisional = 0; }
+    this.closing = false;
+    this.game.start(this);
     this.phase = 'playing';
     this.endsAt = this.now() + this.options.seconds * 1000;
     this.schedule(this.options.seconds * 1000 + GRACE_MS, () => this.endRound());
     this.touch();
   }
 
-  submit(id, rawWord, path) {
+  // Ação de jogo (palavra, marcação, número…). Pode responder na hora ou devolver Promise.
+  act(id, msg) {
     const p = this.players.get(id);
     if (!p) return { ok: false, reason: 'Jogador não está na sala' };
-    if (this.phase !== 'playing') return { ok: false, reason: 'A rodada não está valendo' };
+    if (this.phase !== 'playing' || this.closing || !p.rs) return { ok: false, reason: 'A rodada não está valendo' };
     if (this.now() > this.endsAt + GRACE_MS) return { ok: false, reason: 'Tempo esgotado' };
     const t = this.now();
-    p.submits = p.submits.filter((s) => t - s < 1000);
-    if (p.submits.length >= RATE_LIMIT) return { ok: false, reason: 'Devagar!' };
-    p.submits.push(t);
-
-    const word = normalize(String(rawWord || '')).slice(0, 25);
-    if (word.length < MIN_LETTERS) return { ok: false, reason: `Mínimo ${MIN_LETTERS} letras`, word };
-    if (p.words.includes(word)) return { ok: false, dup: true, reason: 'Você já achou essa', word };
-    if (!this.validPath(word, path)) return { ok: false, reason: 'Essa palavra não está na grade', word };
-    if (!isWord(word)) return { ok: false, reason: `${word.toUpperCase()} não está no dicionário`, word };
-    p.words.push(word);
-    const pts = wordPoints(word);
-    p.provisional += pts;
-    this.touch();
-    return { ok: true, word, pts };
+    p.acts = p.acts.filter((s) => t - s < 1000);
+    if (p.acts.length >= RATE_LIMIT) return { ok: false, reason: 'Devagar!' };
+    p.acts.push(t);
+    const fn = this.game.actions[msg?.a];
+    if (!fn) return { ok: false, reason: 'Ação desconhecida' };
+    return fn(this, p, msg);
   }
 
-  validPath(word, path) {
-    const n = this.grid.length;
-    if (Array.isArray(path) && path.length === word.length) {
-      const seen = new Set();
-      for (let k = 0; k < path.length; k++) {
-        const i = path[k];
-        if (!Number.isInteger(i) || i < 0 || i >= n || seen.has(i) || this.grid[i] !== word[k]) return !!findPath(this.grid, this.size, word);
-        if (k > 0 && !isAdjacent(path[k - 1], i, this.size)) return !!findPath(this.grid, this.size, word);
-        seen.add(i);
-      }
-      return true;
-    }
-    return !!findPath(this.grid, this.size, word);
+  // a rodada só fecha depois que as verificações em andamento (IA) terminarem
+  trackPending(promise) {
+    this.pending.add(promise);
+    promise.finally(() => this.pending.delete(promise));
   }
 
   endRound() {
-    if (this.phase !== 'playing') return;
-    const byPlayer = {};
-    for (const p of this.players.values()) byPlayer[p.id] = p.words;
-    const { players, counts } = scoreRound(this.options.mode, byPlayer);
-    for (const [id, r] of Object.entries(players)) this.players.get(id).total += r.score;
-    const allFound = new Set(Object.keys(counts));
-    let longest = null;
-    for (const [id, r] of Object.entries(players))
-      for (const w of r.words) if (!longest || w.w.length > longest.w.length) longest = { w: w.w, id };
-    this.rounds.push({
-      round: this.round,
-      grid: this.grid,
-      size: this.size,
-      players,
-      longest,
-      missed: this.possible.filter((w) => !allFound.has(w)).sort((a, b) => b.length - a.length || a.localeCompare(b)).slice(0, 30),
-      possible: this.possible.length,
-    });
-    this.phase = this.round >= this.options.rounds ? 'final' : 'reveal';
-    this.endsAt = null;
-    this.touch();
+    if (this.phase !== 'playing' || this.closing) return;
+    this.closing = true;
+    this.clearTimer(this.timer);
+    const finalize = () => {
+      if (this.phase !== 'playing') return;
+      const { scores, detail } = this.game.finish(this);
+      for (const [id, s] of Object.entries(scores)) {
+        const p = this.players.get(id);
+        if (p) p.total += s;
+      }
+      this.rounds.push({ round: this.round, mode: this.options.mode, scores, ...detail });
+      this.phase = this.round >= this.options.rounds ? 'final' : 'reveal';
+      this.endsAt = null;
+      this.closing = false;
+      this.touch();
+    };
+    if (this.pending.size) Promise.allSettled([...this.pending]).then(finalize);
+    else finalize();
   }
 
   schedule(ms, fn) {
@@ -242,45 +242,36 @@ export class Room {
     this.onChange(this);
   }
 
-  // ---------- estado enviado a cada jogador ----------
+  // ---------- estado enviado a cada jogador / telão ----------
   standings() {
-    return [...this.players.values()]
-      .map((p) => ({ id: p.id, total: p.total }))
-      .sort((a, b) => b.total - a.total);
+    return [...this.players.values()].map((p) => ({ id: p.id, total: p.total })).sort((a, b) => b.total - a.total);
   }
 
   stateFor(id) {
-    const me = this.players.get(id);
-    const showGrid = ['playing', 'reveal', 'final'].includes(this.phase);
+    const me = this.players.get(id) || null;
+    const playing = this.phase === 'playing' && this.rd;
     const last = this.rounds[this.rounds.length - 1];
     return {
       code: this.code,
       phase: this.phase,
       hostId: this.hostId,
       you: id,
+      spectator: !me,
+      tv: this.spectators.size > 0,
       options: this.options,
       round: this.round,
       serverNow: this.now(),
       endsAt: this.endsAt,
-      grid: showGrid ? this.grid : null,
-      size: this.size,
-      possible: this.phase === 'playing' ? this.possible.length : undefined,
+      play: playing ? this.game.publicFor(this, me) : undefined,
       players: [...this.players.values()]
         .sort((a, b) => a.joinOrder - b.joinOrder)
-        .map((p) => ({
-          id: p.id,
-          name: p.name,
-          avatar: p.avatar,
-          connected: p.connected,
-          ready: p.ready,
-          total: p.total,
-          // durante a rodada todos veem pontos e quantidade, mas não as palavras
-          roundWords: p.words.length,
-          roundPoints: p.provisional,
-        })),
-      myWords: me && this.phase === 'playing' ? me.words : undefined,
+        .map((p) => {
+          // durante a rodada todos veem pontos e progresso, mas não as jogadas dos outros
+          const prog = playing && p.rs ? this.game.progress(p, this) : { points: 0, label: '' };
+          return { id: p.id, name: p.name, avatar: p.avatar, connected: p.connected, ready: p.ready, total: p.total, hue: p.joinOrder, roundPoints: prog.points, roundLabel: prog.label };
+        }),
       lastRound: ['reveal', 'final'].includes(this.phase) ? last : undefined,
-      history: this.phase === 'final' ? this.rounds.map((r) => ({ round: r.round, scores: Object.fromEntries(Object.entries(r.players).map(([pid, x]) => [pid, x.score])) })) : undefined,
+      history: this.phase === 'final' ? this.rounds.map((r) => ({ round: r.round, scores: r.scores })) : undefined,
       standings: this.standings(),
     };
   }

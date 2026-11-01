@@ -3,9 +3,8 @@
 import { h, createTimer, fmtTime, toast, hud } from '../../core/ui.js';
 import { createRng } from '../../core/rng.js';
 import { makeGrid, wordPoints } from '../../core/letters.js';
-import { isWord } from '../../core/dict.js';
 import { createWordGrid } from '../../core/wordgrid.js';
-import { foundPanel, missedWords } from '../shared-wordlist.js';
+import { foundPanel, missedWords, confirmWord } from '../shared-wordlist.js';
 
 export default {
   id: 'classico-grade',
@@ -30,14 +29,16 @@ export default {
     const wg = createWordGrid({
       size: 4,
       letters: grid,
-      onSubmit(w) {
+      async onSubmit(w) {
         if (w.length < 3) { toast(root, 'Mínimo 3 letras', 'bad'); return { ok: false }; }
         if (found.has(w)) { toast(root, 'Já encontrada', 'dup'); return { dup: true }; }
-        if (!isWord(w)) { toast(root, `${w.toUpperCase()} não está no dicionário`, 'bad'); return { ok: false }; }
+        const v = await confirmWord(root, w, () => ended);
+        if (!v.ok) return { ok: false };
+        if (found.has(w)) return { dup: true };
         found.add(w);
         const pts = wordPoints(w);
         score += pts;
-        panel.add(w, pts);
+        panel.add(w, pts, v.ai);
         top.set('score', score);
         top.set('count', `${found.size}/${words.length}`);
         toast(root, `+${pts}`, 'good');
@@ -53,7 +54,10 @@ export default {
       onEnd: finish,
     });
 
+    let ended = false;
     function finish() {
+      if (ended) return;
+      ended = true;
       timer.stop();
       wg.disable();
       api.end({

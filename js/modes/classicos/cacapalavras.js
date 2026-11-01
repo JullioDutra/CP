@@ -2,45 +2,13 @@
 // Palavras escondidas numa grade 12×12, em 8 direções. 4 minutos.
 import { h, createTimer, fmtTime, toast, hud } from '../../core/ui.js';
 import { createRng } from '../../core/rng.js';
-import { normalize } from '../../core/dict.js';
+import { buildWordSearch, lineBetween as line2, matchPlaced, WS_SIZE } from '../../core/wordsearch.js';
 import { TEMAS } from '../../../data/temas.js';
 
-const SIZE = 12;
-const COUNT = 10;
+const SIZE = WS_SIZE;
 const TIME = 240;
-const DIRS = [[0, 1], [1, 0], [1, 1], [-1, 1], [0, -1], [-1, 0], [-1, -1], [1, -1]];
-const ALPHA = 'aaaabcdeeeefghiiijlmnoooopqrrsssttuuvxz';
 
-export function buildWordSearch(rng, words, size = SIZE) {
-  const grid = Array(size * size).fill(null);
-  const placed = [];
-  const sorted = words.slice().sort((a, b) => normalize(b).length - normalize(a).length);
-  for (const display of sorted) {
-    const w = normalize(display);
-    if (w.length > size) continue;
-    let ok = false;
-    for (let t = 0; t < 300 && !ok; t++) {
-      // direções invertidas são menos frequentes (mais fáceis no começo)
-      const [dr, dc] = rng.next() < 0.7 ? DIRS[rng.int(4)] : DIRS[4 + rng.int(4)];
-      const r0 = rng.int(size), c0 = rng.int(size);
-      const cells = [];
-      for (let k = 0; k < w.length; k++) {
-        const r = r0 + dr * k, c = c0 + dc * k;
-        if (r < 0 || c < 0 || r >= size || c >= size) break;
-        const i = r * size + c;
-        if (grid[i] && grid[i] !== w[k]) break;
-        cells.push(i);
-      }
-      if (cells.length !== w.length) continue;
-      cells.forEach((i, k) => (grid[i] = w[k]));
-      placed.push({ display, word: w, cells });
-      ok = true;
-    }
-    if (placed.length >= COUNT) break;
-  }
-  for (let i = 0; i < grid.length; i++) if (!grid[i]) grid[i] = ALPHA[rng.int(ALPHA.length)];
-  return { grid, placed };
-}
+export { buildWordSearch };
 
 export default {
   id: 'classico-cacapalavras',
@@ -77,13 +45,7 @@ export default {
       const el = document.elementFromPoint(x, y)?.closest?.('.cell');
       return el && board.contains(el) ? Number(el.dataset.i) : null;
     };
-    const lineBetween = (a, b) => {
-      const r1 = Math.floor(a / SIZE), c1 = a % SIZE, r2 = Math.floor(b / SIZE), c2 = b % SIZE;
-      const dr = Math.sign(r2 - r1), dc = Math.sign(c2 - c1);
-      const len = Math.max(Math.abs(r2 - r1), Math.abs(c2 - c1));
-      if (!(r1 === r2 || c1 === c2 || Math.abs(r2 - r1) === Math.abs(c2 - c1))) return null;
-      return Array.from({ length: len + 1 }, (_, k) => (r1 + dr * k) * SIZE + (c1 + dc * k));
-    };
+    const lineBetween = (a, b) => line2(a, b, SIZE);
     const paint = () => cells.forEach((c, i) => c.classList.toggle('sel', line.includes(i)));
 
     board.addEventListener('pointerdown', (e) => {
@@ -105,9 +67,7 @@ export default {
     const up = () => {
       if (start == null) return;
       start = null;
-      const key = line.join(',');
-      const rev = line.slice().reverse().join(',');
-      const k = placed.findIndex((p, idx) => !foundIds.has(idx) && (p.cells.join(',') === key || p.cells.join(',') === rev));
+      const k = matchPlaced(placed, line, (idx) => foundIds.has(idx));
       if (k >= 0) {
         foundIds.add(k);
         const pts = placed[k].word.length * 10;

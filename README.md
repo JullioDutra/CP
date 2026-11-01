@@ -28,6 +28,33 @@ Mínimo de **3 letras**. Palavras maiores valem muito mais:
 
 As palavras são sem acento (A vale por Á, Ã, Â…; C vale por Ç), o que permite mais combinações.
 
+## Dicionário + palavras comuns + IA
+- **~216 mil palavras** do dicionário pt_BR e **~35 mil palavras comuns** (inclui verbos
+  conjugados como "comeu", "gostei", "falamos"), conferidas pelo corretor Hunspell.
+- As grades são sorteadas para ter **muitas palavras conhecidas**, e as "palavras que ficaram
+  de fora" mostram primeiro as mais conhecidas.
+- **IA verificadora:** se alguém forma uma palavra que não está no dicionário, o servidor
+  pergunta a um modelo de linguagem se ela existe. Se a IA aprovar, a palavra vale (marcada
+  com ✨) e passa a valer para todo mundo daí em diante. As respostas ficam em cache.
+
+### Configurar a IA (FreeLLM ou qualquer API compatível com OpenAI)
+Copie `.env.example` para `.env` e preencha:
+
+```bash
+LLM_BASE_URL=http://localhost:3001/v1   # FreeLLMAPI, Groq, OpenRouter, Gemini, Ollama…
+LLM_API_KEY=sua-chave                    # se o provedor pedir
+LLM_MODEL=llama-3.3-70b-versatile
+```
+
+Sem `LLM_BASE_URL`, o jogo funciona normalmente e vale só o dicionário. Ao rodar
+`npm start`, o terminal mostra se a IA está ligada.
+
+**Conferir palavras antes de adicionar ao jogo** (ex.: um tema novo):
+```bash
+npm run verificar -- abacate zoeira xablau
+npm run verificar -- --temas
+```
+
 ## Jogar com amigos (multijogador)
 
 1. **Criar ou entrar numa sala** → nome + avatar → **Criar sala** (ou digite o código / abra o link).
@@ -42,7 +69,21 @@ As palavras são sem acento (A vale por Á, Ã, Â…; C vale por Ç), o que per
 | Modo | Tipo | Regra |
 |---|---|---|
 | ⚡ **Grade em Grupo** | clássico | Palavra achada por 2+ pessoas é **anulada** para todos |
+| 🔍 **Caça-Palavras Corrida** | clássico | Mesma grade 12×12; **quem marca primeiro** leva a palavra (10 pts/letra) |
+| 🔢 **Sudoku Duelo** | clássico | Mesmo sudoku para todos; ganha pela **velocidade**, com bônus de pódio (+500/+250/+100) e −150 por erro |
 | 🤝 **Grade Amigável** | novo | Repetidas pontuam; exclusivas valem **+50%** |
+
+### 📺 Modo Telão
+Abra **📺 Abrir Telão** numa TV ou computador: ele cria a sala e mostra um **QR code**.
+Cada pessoa aponta o celular, entra com nome + avatar e joga pelo celular, que vira o
+**controle** (sem o placar ao lado, porque ele aparece grande na TV). O telão mostra a grade
+grande, o placar ao vivo, as palavras sendo achadas com a cor de cada jogador, as barras de
+progresso do sudoku e o pódio. Também dá para abrir o telão de uma sala que já existe
+(botão 📺 no saguão).
+
+### 🔊 Sons
+Os efeitos sonoros são gerados pelo navegador (sem arquivos): acerto, palavra grande, erro,
+repetida, contagem 3-2-1, últimos 10 segundos e pódio. O botão 🔊/🔇 fica no topo.
 
 O servidor valida tudo (palavra no dicionário, caminho na grade, tempo, limite de envios), então
 ninguém consegue trapacear pelo navegador. Quem cair ou recarregar a página volta para a mesma sala
@@ -87,11 +128,15 @@ css/style.css
 js/main.js                 menu, telas, resultado e ranking
 js/core/                   motor compartilhado (grade, dicionário, sudoku, ranking, RNG,
                            regras do multijogador em multimodes.js)
-js/multi/                  telas e conexão do multijogador
+js/multi/                  telas e conexão do multijogador (inclui telão, corrida e duelo)
 server/                    servidor Node: arquivos + salas em tempo real (WebSocket)
+server/games/              regras de cada jogo em grupo (grade, caça-palavras, sudoku)
+server/ai.js               verificador de palavras com IA
+scripts/verificar-palavras.mjs   confere palavras no dicionário/IA
 js/modes/classicos/        modos clássicos
 js/modes/novos/            modos novos
 data/palavras.txt          dicionário (MPL 2.0 — ver data/README.md)
+data/comuns.txt            palavras comuns por frequência (CC BY-SA 4.0)
 data/temas.js              temas do caça-palavras
 docs/PLANO.md              planejamento das próximas fases
 tests/                     testes da lógica (npm test)

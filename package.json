@@ -6,10 +6,12 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node tests/letters.test.mjs && node tests/modes.test.mjs && node tests/multi.test.mjs",
-    "build:dict": "node data/build-dict.cjs palavras.txt data/palavras.txt"
+    "test": "node tests/letters.test.mjs && node tests/modes.test.mjs && node tests/ai.test.mjs && node tests/multi.test.mjs",
+    "build:dict": "node data/build-dict.cjs palavras.txt data/palavras.txt",
+    "verificar": "node scripts/verificar-palavras.mjs"
   },
   "dependencies": {
+    "qrcode": "^1.5.4",
     "ws": "^8.18.0"
   }
 }
