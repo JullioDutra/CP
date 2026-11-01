@@ -224,8 +224,25 @@ Salas inativas por mais de 24 horas expiram; resultados e perfis permanecem.
 - A validação por IA é opcional e permanece desligada; os dicionários completos continuam funcionando.
 - O modo local (`npm start`) continua usando SQLite e o servidor WebSocket original.
 
+### Modo rápido (recomendado): o jogo direto na Vercel
+Com a variável **`SUPABASE_DB_URL`** na Vercel, a própria função `api/server.js` roda o jogo e fala direto com o
+Postgres (ambos em São Paulo). A instância fica "quente": dicionário e conexões são reaproveitados, e cada comando leva
+dezenas de milissegundos em vez de 0,4–4,5 s (a Edge Function sobe do zero a cada chamada — motivo `EarlyDrop` nos logs).
+Sem a variável, tudo continua como antes, pela Edge Function.
+
+1. Supabase → projeto `trama-cp` → **Connect** → **Transaction pooler** → copie a URI (porta 6543) e troque `[YOUR-PASSWORD]`
+   pela senha do banco.
+2. Vercel → projeto `trama-cp` → **Settings → Environment Variables** → `SUPABASE_DB_URL` = essa URI
+   (Production e Preview, tipo *Sensitive*).
+3. **Redeploy** do projeto.
+
+As salas usam uma trava **por sala** (salas diferentes andam em paralelo); a trava global só protege criar sala e
+procurar partida na Arena.
+
 ### Verificação
 
 `npm test` testa a lógica original e a restauração durável de salas, relógios, credenciais e gravação única do resultado.
+`TRAMA_TEST_PG=postgres://… node tests/postgres.test.mjs` roda a integração com um Postgres de verdade (mesmo esquema):
+perfil, partida solo verificada, ranking, ligas, partida em grupo com resultado gravado uma vez, 6 salas em paralelo e Arena.
 Antes de publicar mudanças, confira também `/api/status`, criação/consulta de perfil, uma partida solo com resultado,
 e dois jogadores na mesma sala (incluindo reconexão e pódio).
