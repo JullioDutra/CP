@@ -77,6 +77,24 @@ npm run verificar -- --temas
 | 🔍 **Caça-Palavras Corrida** | clássico | Mesma grade 12×12; **quem marca primeiro** leva a palavra (10 pts/letra) |
 | 🔢 **Sudoku Duelo** | clássico | Mesmo sudoku para todos; ganha pela **velocidade**, com bônus de pódio (+500/+250/+100) e −150 por erro |
 | 💎 **Grade Bônus** | novo | Casas **×2 e ×3** multiplicam a palavra (as duas juntas = ×6) |
+| ⏳ **Arena Sobrevivência** | novo | 60 s de vida; sua palavra te dá 1 s por letra e **tira 1 s de cada adversário**; o último vivo vence (+40/+20/+10) |
+| 🤜 **Times** | novo | 🔴 × 🔵 sorteados; pontos somados por time; palavra repetida dentro do time não vale de novo |
+
+### ⚡ Arena Pública (jogar com desconhecidos)
+Botão **⚡ Arena Pública**: entra numa fila com 2 a 8 pessoas. Começa sozinha 20 s depois de ter 2 pessoas
+(ou na hora com 8), sem anfitrião; as rodadas avançam sozinhas. No fim, **"Jogar outra"** volta para a fila.
+As partidas da Arena mexem no seu **nível** (Elo, começa em 1000) e na **liga da temporada** (o mês):
+🥉 Bronze · 🥈 Prata (1100) · 🥇 Ouro (1200) · 💠 Platina (1300) · 💎 Diamante (1450).
+
+### Reações, conquistas e temas
+- **Reações** (😂 😮 👏 🔥 😭 🤯 ❤️ 👀) no saguão e no resultado — aparecem para todos, inclusive no telão.
+- **12 conquistas** (primeira vitória, palavra de 8 e de 10 letras, 100 pontos, 10 únicas, 3 e 7 dias seguidos no Desafio do Dia,
+  Arena, Liga Ouro…). Algumas liberam **temas visuais**: Menta, Pêssego, Oceano e Noite estrelada.
+- **Sequência 🔥** de dias seguidos no Desafio do Dia (no menu e no perfil).
+- **⚑ Denúncia** de jogador na tela de estatísticas.
+
+### 📲 Instalar no celular (PWA)
+No celular, use "Adicionar à tela inicial". Os modos solo funcionam **sem internet**.
 
 ### 📺 Modo Telão
 Abra **📺 Abrir Telão** numa TV ou computador: ele cria a sala e mostra um **QR code**.
@@ -182,6 +200,9 @@ Crie um arquivo em `js/modes/classicos/` ou `js/modes/novos/` exportando
 `{ id, category, name, icon, tagline, rules, start(root, api, opts) }`, chame
 `api.end({ score, summary })` ao terminar e registre-o na lista correspondente em
 `js/main.js`.
+
+## Testar o MVP
+Roteiro passo a passo em [`docs/TESTE-MVP.md`](docs/TESTE-MVP.md).
 
 ## Hospedagem (fica para o fim)
 A ideia é usar a **Vercel**. Atenção: as funções da Vercel **não mantêm conexões WebSocket
