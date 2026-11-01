@@ -3,10 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { WebSocketServer } from 'ws';
 import { publicPath } from '../server/static.js';
+import { localBackend } from '../server/local-backend.js';
 
 const ROOT = new URL('../', import.meta.url);
 const MIME = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css', txt: 'text/plain; charset=utf-8', svg: 'image/svg+xml', webmanifest: 'application/manifest+json' };
+// Com SUPABASE_DB_URL, o jogo roda aqui mesmo (instância da Vercel fica "quente":
+// dicionário e conexões reaproveitados). Sem ela, chama a Edge Function do Supabase.
+const inProcess = process.env.SUPABASE_DB_URL ? localBackend(process.env.SUPABASE_DB_URL) : null;
+
 export async function backend(payload) {
+  if (inProcess) return (await inProcess)(payload);
   if (!process.env.TRAMA_BACKEND_URL || !process.env.TRAMA_BACKEND_SECRET) throw new Error('Backend não configurado');
   const response = await fetch(process.env.TRAMA_BACKEND_URL, {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-trama-backend': process.env.TRAMA_BACKEND_SECRET },

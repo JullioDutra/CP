@@ -35,16 +35,24 @@ export async function advanceRoom(room, store, now = Date.now()) {
   if (room.phase === 'final' && !room.finalResult) room.finalResult = await store.recordMatch(room.matchSummary());
 }
 
+// Trava de uma sala (dentro da transação). Salas diferentes andam em paralelo.
+const lockRoom = (sql, code) => sql`SELECT pg_advisory_xact_lock(hashtextextended(${'trama-room:' + code}, 7))`;
+const roomCode = (c) => String(c || '').toUpperCase().trim().slice(0, 8);
+
 export async function handleMulti(sql, store, { session, msg }, now = Date.now()) {
   if (!/^[a-f0-9-]{36}$/.test(session || '')) throw new Error('Sessão inválida');
-  // Serializes the small matchmaking directory and room transitions across instances.
-  await sql`SELECT pg_advisory_xact_lock(71903201)`;
-  await sql`DELETE FROM connections WHERE seen < ${now - 86400000}`;
-  await sql`DELETE FROM rooms WHERE updated_at < ${now - 86400000}`;
-  let [conn] = await sql`SELECT * FROM connections WHERE id = ${session}`;
-  if (!conn) {
-    [conn] = await sql`INSERT INTO connections (id, seen) VALUES (${session}, ${now}) RETURNING *`;
+  const m = msg || { t: 'poll' };
+  // A trava global só protege o "diretório": criar sala e procurar partida na Arena.
+  if (m.t === 'create' || m.t === 'quick' || (m.t === 'watch' && m.create)) await sql`SELECT pg_advisory_xact_lock(71903201)`;
+  if (Math.random() < 0.02) {
+    await sql`DELETE FROM connections WHERE seen < ${now - 86400000}`;
+    await sql`DELETE FROM rooms WHERE updated_at < ${now - 86400000}`;
   }
+  await sql`INSERT INTO connections (id, seen) VALUES (${session}, ${now}) ON CONFLICT (id) DO NOTHING`;
+  const [conn] = await sql`SELECT * FROM connections WHERE id = ${session}`;
+  // Trava a sala atual e a sala de destino, sempre na mesma ordem (evita impasse).
+  const target = m.t === 'join' || m.t === 'resume' || (m.t === 'watch' && !m.create) ? roomCode(m.code) : null;
+  for (const code of [...new Set([conn.code, target].filter(Boolean))].sort()) await lockRoom(sql, code);
   const out = [];
   const load = async (code) => {
     const [row] = await sql`SELECT state FROM rooms WHERE code = ${code || ''}`;
@@ -68,23 +76,24 @@ export async function handleMulti(sql, store, { session, msg }, now = Date.now()
     const letters = 'BCDFGHJKLMNPQRSTVWXZ';
     let code;
     do { code = Array.from({ length: 4 }, () => letters[randomInt(letters.length)]).join(''); } while (await load(code));
+    await lockRoom(sql, code);
     return new Room(code, { isPublic, setTimer: () => null, clearTimer: () => {} });
   };
   const attach = (p) => {
     conn.code = room.code; conn.player_id = p.id; conn.is_tv = false;
     out.push({ t: 'joined', code: room.code, id: p.id, token: p.token });
   };
-  const m = msg || { t: 'poll' };
   try {
     if (m.t === 'create' || m.t === 'join' || m.t === 'quick') {
       if (room) await detach();
       if (m.t === 'create') room = await create();
-      if (m.t === 'join') room = await load(String(m.code || '').toUpperCase().trim());
+      if (m.t === 'join') room = await load(target);
       if (m.t === 'quick') {
-        const candidates = await sql`SELECT state FROM rooms WHERE state->>'public' = 'true' AND state->>'phase' = 'lobby' AND updated_at > ${now - 30000} ORDER BY updated_at DESC`;
+        const candidates = await sql`SELECT code FROM rooms WHERE state->>'public' = 'true' AND state->>'phase' = 'lobby' AND updated_at > ${now - 30000} ORDER BY updated_at DESC LIMIT 10`;
         for (const candidate of candidates) {
-          const r = restoreRoom(candidate.state);
-          if (r.players.size < ARENA_MAX) { room = r; break; }
+          await lockRoom(sql, candidate.code);
+          const r = await load(candidate.code); // relê com a sala travada
+          if (r && r.public && r.phase === 'lobby' && r.players.size < ARENA_MAX) { room = r; break; }
         }
         if (!room) room = await create(true);
       }
@@ -92,12 +101,12 @@ export async function handleMulti(sql, store, { session, msg }, now = Date.now()
       const profile = await store.profileByToken(m.profile);
       attach(room.addPlayer({ name: m.name, avatar: m.avatar, profileId: profile?.id || null }));
     } else if (m.t === 'resume') {
-      const candidate = await load(String(m.code || '').toUpperCase());
+      const candidate = await load(target);
       const p = candidate?.resume(m.id, m.token);
       if (!p) out.push({ t: 'expired' });
       else { room = candidate; attach(p); }
     } else if (m.t === 'watch') {
-      room = m.create ? await create() : await load(String(m.code || '').toUpperCase());
+      room = m.create ? await create() : await load(target);
       if (!room) throw new Error('Sala não encontrada. Confira o código.');
       conn.is_tv = true; conn.code = room.code; conn.player_id = room.addSpectator();
       out.push({ t: 'watching', code: room.code, id: conn.player_id });
