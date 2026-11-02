@@ -7,7 +7,7 @@
   "functions": {
     "api/server.js": {
       "maxDuration": 300,
-      "includeFiles": "{index.html,css/**,js/**,data/*.txt,data/temas.js,data/mistura.js,manifest.webmanifest,sw.js,icon.svg}"
+      "includeFiles": "{index.html,css/**,js/**,data/*.txt,data/temas.js,data/mistura.js,deployment/schema.sql,manifest.webmanifest,sw.js,icon.svg,icon-192.png,icon-512.png}"
     }
   },
   "rewrites": [

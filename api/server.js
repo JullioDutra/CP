@@ -6,10 +6,13 @@ import { publicPath } from '../server/static.js';
 import { localBackend } from '../server/local-backend.js';
 
 const ROOT = new URL('../', import.meta.url);
-const MIME = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css', txt: 'text/plain; charset=utf-8', svg: 'image/svg+xml', webmanifest: 'application/manifest+json' };
-// Com SUPABASE_DB_URL, o jogo roda aqui mesmo (instância da Vercel fica "quente":
-// dicionário e conexões reaproveitados). Sem ela, chama a Edge Function do Supabase.
-const inProcess = process.env.SUPABASE_DB_URL ? localBackend(process.env.SUPABASE_DB_URL) : null;
+const MIME = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css', txt: 'text/plain; charset=utf-8', svg: 'image/svg+xml', png: 'image/png', webmanifest: 'application/manifest+json' };
+// Com um Postgres configurado, o jogo roda aqui mesmo (instância da Vercel fica "quente":
+// dicionário e conexões reaproveitados). Vale o do Supabase (SUPABASE_DB_URL) ou um
+// banco criado pela própria Vercel, como o Neon (DATABASE_URL / POSTGRES_URL).
+// Sem nenhum, chama a Edge Function do Supabase.
+const DB_URL = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL;
+const inProcess = DB_URL ? localBackend(DB_URL) : null;
 
 export async function backend(payload) {
   if (inProcess) return (await inProcess)(payload);

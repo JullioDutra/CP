@@ -2,7 +2,7 @@
 // Grade 4×4, 3 minutos. Ligue letras vizinhas (inclusive na diagonal) para formar palavras.
 import { h, createTimer, fmtTime, toast, hud } from '../../core/ui.js';
 import { createRng } from '../../core/rng.js';
-import { makeGrid, wordPoints, solve } from '../../core/letters.js';
+import { makeGrid, wordPoints, solve, longestWord } from '../../core/letters.js';
 import { startOnline } from '../../core/online-solo.js';
 import { createWordGrid } from '../../core/wordgrid.js';
 import { foundPanel, missedWords, confirmWord } from '../shared-wordlist.js';
@@ -77,7 +77,8 @@ export default {
       api.end({
         score,
         revealItems: items,
-        summary: [['Palavras', found.size], ['Maior palavra', [...found].sort((a, b) => b.length - a.length)[0]?.toUpperCase() || '—']],
+        summary: [['Palavras', found.size], ['Maior encontrada', longestWord([...found])?.toUpperCase() || '—'], ['Maior da grade', longestWord(words)?.toUpperCase() || '—']],
+        longest: { found: longestWord([...found]), possible: longestWord(words) },
         extra: missedWords(words, found),
         online: online && { ticket: online.ticket, palavras: [...found].map((w) => ({ w, path: paths[w] })) },
       });

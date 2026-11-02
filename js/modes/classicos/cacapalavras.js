@@ -18,7 +18,7 @@ export default {
   name: 'Caça-Palavras',
   icon: '🔍',
   tagline: 'Grade 12×12 · tema surpresa ou Mistura · 4 min',
-  options: { key: 'tema', label: 'Tema', choices: [['surpresa', 'Tema surpresa'], ['mistura', '🎲 Mistura (sem tema)']], default: 'surpresa' },
+  options: { key: 'tema', label: 'Tema', choices: [['surpresa', 'Tema surpresa'], ['mistura', 'Mistura (sem tema)']], default: 'surpresa' },
   rankingKey: (opts) => (opts.tema === 'mistura' ? 'classico-cacapalavras-mistura' : 'classico-cacapalavras'),
   rankingVariants: [['classico-cacapalavras', 'Tema'], ['classico-cacapalavras-mistura', 'Mistura']],
   rules: [

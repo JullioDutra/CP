@@ -1,4 +1,7 @@
 import { h } from './core/ui.js';
+import { icon, modeIcon } from './core/icons.js';
+import { clearTimeAlert } from './core/timealert.js';
+import { installButton } from './core/install.js';
 import { loadDict } from './core/dict.js';
 import { getRanking, addScore, qualifies, getPlayerName, setPlayerName, clearRanking } from './core/ranking.js';
 
@@ -31,6 +34,7 @@ function setCleanup(fn) {
 }
 
 function screen(...children) {
+  clearTimeAlert();
   cleanup?.();
   cleanup = null;
   app.replaceChildren(...children);
@@ -41,56 +45,71 @@ const rankingVariants = (m) => m.rankingVariants || [[m.id, null]];
 
 // ---------- Menu ----------
 function modeCard(m) {
+  const best = bestLabel(m);
   return h(
     'button',
     { class: `mode-card ${m.category}`, onclick: () => showIntro(m) },
-    h('span', { class: 'mode-icon' }, m.icon),
+    h('span', { class: 'mode-icon' }, modeIcon(m.id)),
     h('span', { class: 'mode-text' }, h('strong', {}, m.name), h('small', {}, m.tagline)),
-    h('span', { class: 'mode-best' }, bestLabel(m))
+    best ? h('span', { class: 'mode-best' }, icon('star', 'tiny'), best) : ''
   );
 }
 
 function bestLabel(m) {
   const best = Math.max(0, ...rankingVariants(m).map(([id]) => getRanking(id)[0]?.score || 0));
-  return best ? `Recorde ${best}` : '';
+  return best ? `${best}` : '';
+}
+
+// Marca: 2×2 peças com as letras T R A M.
+function wordmark() {
+  return h('div', { class: 'wordmark', 'aria-label': 'Trama' },
+    h('span', { class: 'wm-tiles', 'aria-hidden': 'true' }, ['T', 'R', 'A', 'M'].map((l) => h('span', {}, l))),
+    h('span', { class: 'wm-name' }, 'Trama'));
 }
 
 function showMenu() {
+  const codeInput = h('input', { id: 'home-code', type: 'text', maxlength: 4, placeholder: 'ABCD', class: 'code-input', autocapitalize: 'characters', autocomplete: 'off', inputmode: 'text', 'aria-label': 'Código da sala' });
+  codeInput.addEventListener('input', () => (codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z]/g, '')));
+  const joinErr = h('p', { class: 'form-error' });
   screen(
-    h('div', { class: 'menu-top' }, h('span', { class: 'spacer' }), profileChip()),
-    h('header', { class: 'brand' }, h('h1', {}, 'Trama'), h('p', {}, 'Jogos de letras e lógica')),
-    h(
-      'section',
-      { class: 'mode-section multi' },
-      h('h2', {}, '👥 Jogar com amigos ', h('span', { class: 'tag live' }, 'ao vivo')),
-      h('p', { class: 'section-sub' }, 'Todos no mesmo jogo, ao mesmo tempo. Sem cadastro: coloque seu nome, escolha um avatar e crie a sala. Tem TV? Abra o Telão e jogue pelo celular.'),
-      h(
-        'div',
-        { class: 'multi-cta' },
-        h('div', { class: 'row-actions' },
-          h('button', { class: 'btn big', onclick: () => openMulti() }, 'Criar ou entrar numa sala'),
-          h('button', { class: 'btn ghost big arena-btn', onclick: () => openArena() }, '⚡ Arena Pública', arenaStatusEl()),
-          h('button', { class: 'btn ghost big', onclick: () => { history.replaceState(null, '', '?tela=1'); openTv(); } }, '📺 Abrir Telão')),
-        h('div', { class: 'multi-modes' }, multiRankingModes.map((m) => h('span', { class: `pill ${m.category}` }, `${m.icon} ${m.name} · ${m.category === 'classico' ? 'clássico' : 'novo'}`)))
-      )
-    ),
-    h(
-      'section',
-      { class: 'mode-section' },
-      h('h2', {}, 'Modos Clássicos · solo'),
-      h('p', { class: 'section-sub' }, 'Os formatos tradicionais do gênero, com regras conhecidas.'),
-      h('div', { class: 'mode-grid' }, CLASSICOS.map(modeCard))
-    ),
-    h(
-      'section',
-      { class: 'mode-section novos' },
-      h('h2', {}, 'Modos Novos · solo ', h('span', { class: 'tag' }, 'exclusivos Trama')),
-      h('p', { class: 'section-sub' }, 'Variações criadas para o Trama, com mecânicas diferentes.'),
-      h('div', { class: 'mode-grid' }, NOVOS.map(modeCard))
-    ),
-    h('div', { class: 'row-actions center' },
-      h('button', { class: 'btn', onclick: () => showRanking() }, '🏆 Ranking global'),
-      h('button', { class: 'btn ghost', onclick: () => showProfile(ctx) }, '👤 Meu perfil'))
+    h('header', { class: 'home-top' },
+      wordmark(),
+      h('span', { class: 'spacer' }),
+      installButton('btn ghost small'),
+      h('button', { class: 'btn ghost small icon-btn', onclick: () => showRanking(), title: 'Ranking', 'aria-label': 'Ranking' }, icon('trophy')),
+      profileChip()),
+    h('section', { class: 'hero' },
+      h('div', { class: 'hero-text' },
+        h('p', { class: 'eyebrow' }, h('span', { class: 'live-dot' }), 'Ao vivo · sem cadastro'),
+        h('h1', {}, 'Palavras com os amigos, todo mundo ao mesmo tempo.'),
+        h('p', { class: 'lead' }, 'Crie uma sala, mande o link no grupo e veja quem faz mais pontos. Funciona no celular, no computador e na TV.')),
+      h('div', { class: 'join-panel' },
+        h('form', { class: 'join-box', onsubmit: (e) => {
+          e.preventDefault();
+          if (codeInput.value.length !== 4) { joinErr.textContent = 'O código tem 4 letras.'; codeInput.focus(); return; }
+          openMulti({ code: codeInput.value, auto: true });
+        } },
+          h('label', { for: 'home-code', class: 'join-label' }, 'Entrar com código'),
+          h('div', { class: 'join-row' }, codeInput, h('button', { class: 'btn', type: 'submit' }, icon('enter'), 'Entrar')),
+          joinErr),
+        h('div', { class: 'or' }, h('span', {}, 'ou')),
+        h('button', { class: 'btn ghost wide', onclick: () => openMulti({ create: true }) }, icon('plus'), 'Criar sala nova'),
+        h('div', { class: 'hero-links' },
+          h('button', { class: 'link-btn', onclick: () => openArena() }, icon('zap'), h('span', {}, 'Arena Pública', arenaStatusEl())),
+          h('button', { class: 'link-btn', onclick: () => { history.replaceState(null, '', '?tela=1'); openTv(); } }, icon('tv'), 'Modo Telão')))),
+    h('section', { class: 'home-section' },
+      h('div', { class: 'section-head' }, h('h2', {}, 'Jogar sozinho'), h('p', { class: 'section-sub' }, 'Treine, bata seu recorde e entre no ranking.')),
+      h('p', { class: 'group-label' }, 'Clássicos'),
+      h('div', { class: 'mode-grid' }, CLASSICOS.map(modeCard)),
+      h('p', { class: 'group-label novo' }, 'Exclusivos do Trama'),
+      h('div', { class: 'mode-grid' }, NOVOS.map(modeCard))),
+    h('section', { class: 'home-section' },
+      h('div', { class: 'section-head' }, h('h2', {}, 'Modos em grupo'), h('p', { class: 'section-sub' }, 'Quem cria a sala escolhe o modo.')),
+      h('div', { class: 'group-modes' }, multiRankingModes.map((m) => h('div', { class: `gm ${m.category}` }, h('span', { class: 'gm-icon' }, modeIcon(m.id.replace(/^multi-/, ''))), h('span', {}, h('strong', {}, m.name), h('small', {}, m.short)))))),
+    h('footer', { class: 'home-foot' },
+      h('button', { class: 'link-btn', onclick: () => showRanking() }, icon('trophy'), 'Ranking global'),
+      h('button', { class: 'link-btn', onclick: () => showProfile(ctx) }, icon('user'), 'Meu perfil'),
+      installButton('link-btn'))
   );
 }
 
@@ -98,12 +117,11 @@ function profileChip() {
   const p = localProfile();
   const name = p?.name || getPlayerName();
   const extra = h('span', { class: 'pc-extra' });
-  // sequência de dias 🔥 e liga (quando há servidor)
   if (p?.token) api('perfil').then(({ stats }) => {
-    extra.replaceChildren(stats.streak ? h('span', { class: 'pc-streak', title: 'Dias seguidos no Desafio do Dia' }, `🔥${stats.streak}`) : '');
+    extra.replaceChildren(stats.streak ? h('span', { class: 'pc-streak', title: 'Dias seguidos no Desafio do Dia' }, icon('flame', 'tiny'), stats.streak) : '');
   }).catch(() => {});
-  return h('button', { class: 'profile-chip', onclick: () => showProfile(ctx), title: 'Meu perfil' },
-    h('span', { class: 'pc-avatar' }, p?.avatar || getAvatar()), name ? h('span', {}, name) : h('span', {}, 'Criar perfil'), extra);
+  return h('button', { class: 'profile-chip', onclick: () => showProfile(ctx), title: 'Meu perfil: trocar nome e avatar' },
+    h('span', { class: 'pc-avatar' }, p?.avatar || getAvatar()), h('span', { class: 'pc-name' }, name || 'Criar perfil'), extra, icon('edit', 'tiny muted'));
 }
 
 // "3 esperando · 5 jogando" na Arena Pública
@@ -138,17 +156,17 @@ function showIntro(m) {
     h(
       'div',
       { class: 'intro card' },
-      h('div', { class: 'intro-icon' }, m.icon),
+      h('div', { class: 'intro-icon' }, modeIcon(m.id)),
       h('h2', {}, m.name),
       h('p', { class: 'badge ' + m.category }, m.category === 'classico' ? 'Modo clássico' : 'Modo novo'),
       h('ul', { class: 'rules' }, m.rules.map((r) => h('li', {}, r))),
       optEl,
       m.scoring ? h('p', { class: 'points-table' }, h('strong', {}, 'Pontos por palavra: '), POINTS_HINT) : '',
-      m.globalRanking ? h('p', { class: 'hint center' }, '🌍 Este modo vale para o ranking global (com o servidor ligado).') : '',
+      m.globalRanking ? h('p', { class: 'hint' }, icon('globe', 'inline'), ' Vale para o ranking global.') : '',
       h(
         'div',
         { class: 'row-actions center' },
-        h('button', { class: 'btn big', onclick: () => play(m, opts) }, 'Jogar'),
+        h('button', { class: 'btn big', onclick: () => play(m, opts) }, icon('play'), 'Jogar'),
         h('button', { class: 'btn ghost', onclick: () => showRanking(m) }, 'Ver ranking')
       )
     )
@@ -156,7 +174,7 @@ function showIntro(m) {
 }
 
 function topBar(m) {
-  return h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: showMenu }, '← Menu'), h('span', {}, `${m.icon} ${m.name}`), h('span', { class: 'spacer' }), muteButton(h));
+  return h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: showMenu }, icon('back'), 'Menu'), h('span', { class: 'topbar-title' }, modeIcon(m.id, 'tiny'), m.name), h('span', { class: 'spacer' }), muteButton(h));
 }
 
 // ---------- Partida ----------
@@ -186,23 +204,23 @@ function play(m, baseOpts = {}) {
 
 // Envia a partida solo ao servidor, que confere as palavras e devolve a posição no ranking global.
 function onlineResult(result, m) {
-  const el = h('div', { class: 'global-pos' }, h('p', { class: 'muted' }, '🌍 Enviando para o ranking global…'));
+  const el = h('div', { class: 'global-pos' }, h('p', { class: 'muted' }, 'Enviando para o ranking global…'));
   (result._online ||= finishOnline(result.online.ticket, result.online.palavras))
     .then((r) => {
       if (!r.ok) { el.replaceChildren(h('p', { class: 'notice' }, r.erro || 'A partida não entrou no ranking global.')); return; }
-      if (!r.ranked) { el.replaceChildren(h('p', { class: 'muted' }, '🌍 Partida de treino: não conta no ranking global.')); return; }
+      if (!r.ranked) { el.replaceChildren(h('p', { class: 'muted' }, 'Partida de treino: não conta no ranking global.')); return; }
       const pos = r.posicao;
       const fresh = (r.conquistas || []).map((k) => achievementByKey[k]).filter(Boolean);
       if (fresh.length) markSeenAchievements(fresh.map((a) => a.key));
-      el.replaceChildren(fresh.length ? h('div', { class: 'achv-new' }, h('p', {}, '🏅 Conquista nova!'), h('div', { class: 'achv-list' }, fresh.map((a) => h('span', { class: 'achv-pill' }, `${a.icon} ${a.name}`)))) : '', pos
+      el.replaceChildren(fresh.length ? h('div', { class: 'achv-new' }, h('p', {}, icon('medal', 'inline'), ' Conquista nova!'), h('div', { class: 'achv-list' }, fresh.map((a) => h('span', { class: 'achv-pill' }, a.name)))) : '', pos
         ? h('div', { class: 'pos-cards' },
-            h('p', {}, '🌍 Ranking global (conferido pelo servidor: ', h('strong', {}, `${r.score} pts`), ')'),
+            h('p', {}, 'Ranking global (conferido pelo servidor: ', h('strong', {}, `${r.score} pts`), ')'),
             h('div', { class: 'pos-row' }, (m.id === 'novo-diario' ? [['hoje', 'Desafio de hoje']] : [['hoje', 'Hoje'], ['semana', 'Semana'], ['sempre', 'Sempre']]).map(([k, label]) =>
               h('div', { class: 'pos-card' }, h('strong', {}, pos[k] ? `${pos[k]}º` : '—'), h('span', {}, label)))),
             h('button', { class: 'btn ghost small', onclick: () => showRanking(m) }, 'Ver ranking global'))
-        : h('p', { class: 'muted' }, '🌍 Faça pelo menos 1 ponto para entrar no ranking global.'));
+        : h('p', { class: 'muted' }, 'Faça pelo menos 1 ponto para entrar no ranking global.'));
     })
-    .catch((e) => el.replaceChildren(h('p', { class: 'muted' }, `🌍 Ranking global indisponível (${e.message}).`)));
+    .catch((e) => el.replaceChildren(h('p', { class: 'muted' }, `Ranking global indisponível (${e.message}).`)));
   return el;
 }
 
@@ -239,16 +257,19 @@ async function showSoloReveal(m, opts, result) {
     intro: record ? `Seu recorde: ${record} pts` : 'Contando seus pontos…',
     finishText: () => {
       if (!record) return { title: `${result.score} pontos`, sub: 'Primeira partida neste modo!' };
-      if (result.score > record) return { title: '🏆 Novo recorde!', sub: `${result.score} pontos (antes: ${record})` };
+      if (result.score > record) return { title: 'Novo recorde!', sub: `${result.score} pontos (antes: ${record})` };
       if (result.score === record) return { title: `${result.score} pontos`, sub: 'Empatou com o seu recorde!' };
       return { title: `${result.score} pontos`, sub: `Faltaram ${record - result.score + 1} para o recorde` };
     },
     onDone: () => {
       after.replaceChildren(
+        result.longest ? h('div', { class: 'longest-row' },
+          [['Maior palavra encontrada', result.longest.found], ['Maior palavra da grade', result.longest.possible]].map(([label, w]) =>
+            h('div', { class: 'longest-card' }, h('span', { class: 'lc-label' }, label), h('strong', { class: 'lc-word' }, w ? w.toUpperCase() : '—'), h('span', { class: 'lc-sub' }, w ? `${w.length} letras` : 'nenhuma ainda')))) : '',
         result.online ? onlineResult(result, m) : '',
         h('div', { class: 'row-actions center' },
-          h('button', { class: 'btn ghost', onclick: () => showResult(m, opts, { ...result, _revealed: true }) }, '📊 Mais estatísticas'),
-          h('button', { class: 'btn big', onclick: () => play(m, opts) }, 'Jogar de novo'),
+          h('button', { class: 'btn ghost', onclick: () => showResult(m, opts, { ...result, _revealed: true }) }, icon('chart'), 'Mais estatísticas'),
+          h('button', { class: 'btn big', onclick: () => play(m, opts) }, icon('refresh'), 'Jogar de novo'),
           h('button', { class: 'btn ghost', onclick: showMenu }, 'Menu')));
       after.classList.remove('hidden');
     },
@@ -272,7 +293,7 @@ function showResult(m, opts, result) {
 
   if (canRank) {
     saveArea.append(
-      h('p', { class: 'new-record' }, getRanking(rankId)[0]?.score < result.score || !getRanking(rankId).length ? '🏆 Novo recorde!' : 'Você entrou no ranking!'),
+      h('p', { class: 'new-record' }, getRanking(rankId)[0]?.score < result.score || !getRanking(rankId).length ? 'Novo recorde!' : 'Você entrou no ranking!'),
       h('form', {
         class: 'save-form',
         onsubmit: (e) => {
@@ -311,7 +332,7 @@ function showResult(m, opts, result) {
       h(
         'div',
         { class: 'row-actions center' },
-        h('button', { class: 'btn big', onclick: () => play(m, opts) }, 'Jogar de novo'),
+        h('button', { class: 'btn big', onclick: () => play(m, opts) }, icon('refresh'), 'Jogar de novo'),
         h('button', { class: 'btn ghost', onclick: showMenu }, 'Menu')
       )
     )
@@ -323,7 +344,6 @@ function showResult(m, opts, result) {
 function rankingTable(rankId, highlightId) {
   const rows = getRanking(rankId);
   if (!rows.length) return h('p', { class: 'empty' }, 'Nenhuma partida registrada ainda. Seja o primeiro!');
-  const medal = ['🥇', '🥈', '🥉'];
   return h(
     'table',
     { class: 'ranking' },
@@ -335,7 +355,7 @@ function rankingTable(rankId, highlightId) {
         h(
           'tr',
           { class: r.id === highlightId ? 'me' : '' },
-          h('td', {}, medal[i] || i + 1),
+          h('td', {}, h('span', { class: `pos-badge p${i + 1}` }, i + 1)),
           h('td', {}, r.name),
           h('td', { class: 'num' }, r.score),
           h('td', { class: 'date' }, new Date(r.date).toLocaleDateString('pt-BR'))
@@ -373,7 +393,7 @@ function renderLocalRanking(container, selected) {
   }
 
   const group = (title, list) =>
-    h('div', { class: 'tab-group' }, h('span', { class: 'tab-title' }, title), list.map((m) => h('button', { class: `chip ${m.category}`, 'data-id': m.id, onclick: () => select(m) }, `${m.icon} ${m.name}`)));
+    h('div', { class: 'tab-group' }, h('span', { class: 'tab-title' }, title), list.map((m) => h('button', { class: `chip ${m.category}`, 'data-id': m.id, onclick: () => select(m) }, m.name)));
   tabs.append(group('Em grupo', multiRankingModes), group('Clássicos', CLASSICOS), group('Novos', NOVOS));
   container.replaceChildren(h('p', { class: 'section-sub' }, 'Suas 10 maiores pontuações por partida em cada modo, salvas só neste aparelho.'), tabs, body);
   select(selected);

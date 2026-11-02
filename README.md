@@ -236,6 +236,11 @@ Sem a variável, tudo continua como antes, pela Edge Function.
    (Production e Preview, tipo *Sensitive*).
 3. **Redeploy** do projeto.
 
+**Alternativa gratuita sem Supabase (Neon pela Vercel):** Vercel → projeto `trama-cp` → aba **Storage** →
+**Create Database** → **Neon** (plano Free) → conecte ao projeto. A Vercel cria a variável `DATABASE_URL` sozinha.
+Depois é só **Redeploy**: na primeira chamada o jogo cria as tabelas (`deployment/schema.sql`) no banco novo.
+A ordem de preferência é `SUPABASE_DB_URL`, depois `DATABASE_URL`, depois `POSTGRES_URL`.
+
 As salas usam uma trava **por sala** (salas diferentes andam em paralelo); a trava global só protege criar sala e
 procurar partida na Arena.
 

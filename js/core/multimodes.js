@@ -125,7 +125,7 @@ export const MULTI_MODES = {
     category: 'novo',
     name: 'Times',
     icon: '🤜',
-    short: '🔴 contra 🔵, pontos somados',
+    short: 'Vermelho contra Azul, pontos somados',
     teams: true,
     rules: [
       'Os jogadores são sorteados em dois times: 🔴 Vermelho e 🔵 Azul.',

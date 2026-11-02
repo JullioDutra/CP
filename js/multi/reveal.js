@@ -195,7 +195,7 @@ export function createReveal({ round, players, totals, you, hueOf, final, onDone
     const custom = finishText?.(leader, state);
     card.replaceChildren(
       h('div', { class: 'rc-word' }, custom?.title ?? (leader ? `${leader.avatar} ${leader.name}` : 'Fim!')),
-      h('div', { class: 'rc-meta' }, h('span', { class: 'rc-pts' }, custom?.sub ?? (final ? '🏆 venceu a partida!' : 'lidera a partida!'))));
+      h('div', { class: 'rc-meta' }, h('span', { class: 'rc-pts' }, custom?.sub ?? (final ? 'venceu a partida!' : 'lidera a partida!'))));
     if (leader) rows[leader.id].el.classList.add('leader');
     skipBtn.remove();
     play(final ? 'win' : 'end');

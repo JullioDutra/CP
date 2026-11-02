@@ -1,5 +1,7 @@
 // Telas do multijogador: perfil (nome + avatar), saguão, rodada, revelação, pódio e Telão.
 import { h, fmtTime, toast } from '../core/ui.js';
+import { timeAlert, clearTimeAlert } from '../core/timealert.js';
+import { icon, modeIcon } from '../core/icons.js';
 import { createWordGrid } from '../core/wordgrid.js';
 import { POINTS_HINT } from '../core/letters.js';
 import { AVATARS, MULTI_MODES, PLAYER_HUES, formatOption, TEAMS, REACTIONS } from '../core/multimodes.js';
@@ -141,15 +143,17 @@ function leaveRoom() {
 }
 
 // ---------- tela inicial: nome + avatar ----------
-export function openMulti() {
+// opts.code: código digitado no início; opts.auto: entra direto se já tiver nome;
+// opts.create: cria a sala direto se já tiver nome.
+export function openMulti(opts = {}) {
   const s = store.get(SESSION_KEY);
-  const urlCode = roomCodeFromUrl();
-  if (s && !s.tv && (!urlCode || urlCode === s.code)) {
+  const urlCode = opts.code || roomCodeFromUrl();
+  if (!opts.code && !opts.create && s && !s.tv && (!urlCode || urlCode === s.code)) {
     showConnecting();
     ensureNet((err) => showHome({ error: err }));
     return;
   }
-  showHome({ code: urlCode });
+  showHome({ code: urlCode, auto: opts.auto ? 'join' : opts.create ? 'create' : null });
 }
 
 // Arena Pública: entra numa partida com desconhecidos (sem código).
@@ -173,14 +177,16 @@ function showConnecting(text = 'Conectando à sala…') {
   ctx.screen(h('p', { class: 'loading' }, text));
 }
 
-function showHome({ code = '', error = '', arena = false } = {}) {
+function showHome({ code = '', error = '', arena = false, auto = null } = {}) {
   state = null;
   view = null;
   let avatar = getAvatar();
-  const nameInput = h('input', { type: 'text', maxlength: 16, placeholder: 'Seu nome', value: getPlayerName(), autocomplete: 'nickname', required: true });
-  const codeInput = h('input', { type: 'text', maxlength: 4, placeholder: 'CÓDIGO', value: code, class: 'code-input', autocapitalize: 'characters' });
+  const invited = !arena && code && code.length === 4;
+  const nameInput = h('input', { id: 'mh-name', type: 'text', maxlength: 16, placeholder: 'Seu nome', value: getPlayerName(), autocomplete: 'nickname', required: true });
+  const codeInput = h('input', { id: 'mh-code', type: 'text', maxlength: 4, placeholder: 'ABCD', value: code, class: 'code-input', autocapitalize: 'characters', autocomplete: 'off', 'aria-label': 'Código da sala' });
   codeInput.addEventListener('input', () => (codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z]/g, '')));
   const errEl = h('p', { class: 'form-error' }, error);
+  const avatarBtn = h('button', { type: 'button', class: 'avatar-current', 'aria-label': 'Trocar avatar', title: 'Trocar avatar' }, avatar);
   const avatars = AVATARS.map((a) =>
     h('button', {
       type: 'button',
@@ -188,6 +194,7 @@ function showHome({ code = '', error = '', arena = false } = {}) {
       'aria-label': `Avatar ${a}`,
       onclick: (e) => {
         avatar = a;
+        avatarBtn.textContent = a;
         avatars.forEach((b) => b.classList.remove('on'));
         e.currentTarget.classList.add('on');
       },
@@ -199,31 +206,43 @@ function showHome({ code = '', error = '', arena = false } = {}) {
     if (!name) { errEl.textContent = 'Digite seu nome.'; nameInput.focus(); return; }
     if (action.t === 'join' && action.code.length !== 4) { errEl.textContent = 'O código da sala tem 4 letras.'; codeInput.focus(); return; }
     store.set(SESSION_KEY, null);
-    showConnecting();
+    showConnecting(action.t === 'join' ? `Entrando na sala ${action.code}…` : 'Criando a sala…');
     // perfil sem login: junta as partidas no ranking global e nas estatísticas
     const prof = await saveIdentity(name, avatar);
     ensureNet((err) => showHome({ code: codeInput.value, error: err })).send({ ...action, name, avatar, profile: prof?.token });
   }
+  const join = () => go({ t: 'join', code: codeInput.value });
+
+  // quem já tem nome e veio do início com um código (ou "Criar sala") vai direto
+  if (auto && getPlayerName() && !error) { auto === 'join' && code ? join() : go({ t: 'create' }); return; }
+
+  const who = h('div', { class: 'who' },
+    h('p', { class: 'step-label' }, 'Você'),
+    h('div', { class: 'who-row' }, avatarBtn, h('label', { class: 'field grow' }, h('span', { class: 'sr-only' }, 'Nome'), nameInput)),
+    h('div', { class: 'avatar-grid' }, avatars));
+
+  const joinCard = h('form', { class: `choice join ${invited ? 'invited' : ''}`, onsubmit: (e) => { e.preventDefault(); join(); } },
+    h('div', { class: 'choice-head' }, icon('enter'), h('h3', {}, invited ? `Convite para a sala ${code}` : 'Entrar numa sala')),
+    h('p', { class: 'hint' }, invited ? 'Confira seu nome e toque em Entrar.' : 'Digite o código de 4 letras que seu amigo mandou.'),
+    h('div', { class: 'join-row' }, codeInput, h('button', { class: 'btn', type: 'submit' }, 'Entrar')));
+  const createCard = h('div', { class: 'choice create' },
+    h('div', { class: 'choice-head' }, icon('plus'), h('h3', {}, 'Criar sala nova')),
+    h('p', { class: 'hint' }, 'Você escolhe o modo e manda o link para os amigos.'),
+    h('button', { class: 'btn ghost', type: 'button', onclick: () => go({ t: 'create' }) }, 'Criar sala'));
 
   ctx.screen(
-    h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: () => { setUrl(null); ctx.showMenu(); } }, '← Menu'), h('span', {}, '👥 Jogar com amigos')),
-    h(
-      'div',
-      { class: 'card multi-home' },
-      h('h2', {}, 'Quem é você?'),
-      h('label', { class: 'field' }, h('span', {}, 'Nome'), nameInput),
-      h('div', { class: 'field' }, h('span', {}, 'Avatar'), h('div', { class: 'avatar-grid' }, avatars)),
+    h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: () => { setUrl(null); ctx.showMenu(); } }, icon('back'), 'Menu'), h('span', { class: 'topbar-title' }, icon('users', 'tiny'), arena ? 'Arena Pública' : 'Jogar com amigos')),
+    h('div', { class: 'card multi-home' },
+      who,
       errEl,
       arena
-        ? h('div', { class: 'row-actions center' }, h('button', { class: 'btn big', onclick: () => go({ t: 'quick' }) }, '⚡ Entrar na Arena'))
-        : h('div', { class: 'row-actions center' }, h('button', { class: 'btn big', onclick: () => go({ t: 'create' }) }, 'Criar sala'), h('button', { class: 'btn ghost big', onclick: () => go({ t: 'quick' }) }, '⚡ Arena Pública')),
-      h('div', { class: 'divider' }, h('span', {}, 'ou entre com um código')),
-      h('form', { class: 'join-form', onsubmit: (e) => { e.preventDefault(); go({ t: 'join', code: codeInput.value }); } }, codeInput, h('button', { class: 'btn', type: 'submit' }, 'Entrar')),
-      h('p', { class: 'section-sub center' }, 'Sem cadastro: só nome e avatar. Quem criar a sala escolhe o modo e manda o código ou o link para os amigos.'),
-      h('p', { class: 'section-sub center' }, '📺 Vai jogar na TV? ', h('a', { href: '?tela=1', onclick: (e) => { e.preventDefault(); setUrl({ tela: '1' }); openTv(); } }, 'Abrir o Telão'))
-    )
+        ? h('div', { class: 'row-actions' }, h('button', { class: 'btn big', onclick: () => go({ t: 'quick' }) }, icon('zap'), 'Entrar na Arena'))
+        : h('div', { class: 'choices' }, joinCard, invited ? h('button', { class: 'link-btn small center', type: 'button', onclick: () => go({ t: 'create' }) }, 'Prefiro criar uma sala nova') : createCard),
+      arena ? '' : h('div', { class: 'home-extra' },
+        h('button', { class: 'link-btn', type: 'button', onclick: () => go({ t: 'quick' }) }, icon('zap'), 'Arena Pública: jogar com desconhecidos'),
+        h('a', { class: 'link-btn', href: '?tela=1', onclick: (e) => { e.preventDefault(); setUrl({ tela: '1' }); openTv(); } }, icon('tv'), 'Vai jogar na TV? Abrir o Telão')))
   );
-  if (code) nameInput.value ? codeInput.focus() : nameInput.focus();
+  if (invited) nameInput.value ? codeInput.closest('form').querySelector('button[type=submit]').focus() : nameInput.focus();
 }
 
 // ---------- Telão (TV/computador mostrando a partida) ----------
@@ -249,9 +268,9 @@ function showTvHome(error = '') {
     ensureNet((err) => showTvHome(err)).send(msg);
   };
   ctx.screen(
-    h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: () => { setUrl(null); ctx.showMenu(); } }, '← Menu'), h('span', {}, '📺 Telão')),
+    h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: () => { setUrl(null); ctx.showMenu(); } }, icon('back'), 'Menu'), h('span', { class: 'topbar-title' }, icon('tv', 'tiny'), 'Telão')),
     h('div', { class: 'card multi-home' },
-      h('h2', {}, '📺 Modo Telão'),
+      h('h2', {}, 'Modo Telão'),
       h('p', { class: 'center' }, 'Abra esta tela na TV ou no computador. A grade aparece grande aqui e cada pessoa joga pelo celular, lendo o QR code.'),
       h('p', { class: 'form-error' }, error),
       h('div', { class: 'row-actions center' }, h('button', { class: 'btn big', onclick: () => watch({ t: 'watch', create: true }) }, 'Criar sala neste telão')),
@@ -274,15 +293,18 @@ function mountRoom() {
     // Arena Sobrevivência: a sua vida
     const life = state?.play?.lifeEndsAt != null ? (state.play.alive ? state.play.lifeEndsAt - serverNow() : 0) : null;
     root.querySelectorAll('[data-life]').forEach((el) => {
-      el.textContent = state.play.alive ? fmtTime(life / 1000) : '💀';
+      el.textContent = state.play.alive ? fmtTime(life / 1000) : '0:00';
       el.classList.toggle('danger', life < 10000);
     });
-    // bipes: contagem 3-2-1 e últimos 10 segundos (da rodada ou da sua vida)
+    // contagem 3-2-1 com bipe; nos últimos 10 s da rodada (ou da sua vida) o alerta dramático
     const sec = Math.ceil((life ?? left) / 1000);
-    if (state?.endsAt && sec !== lastSecond && sec > 0) {
-      if (state.phase === 'countdown' && sec <= 3) play('count');
-      if (state.phase === 'playing' && sec <= 10 && (life == null || state.play.alive)) play('tick');
-    }
+    if (state?.endsAt && sec !== lastSecond && sec > 0 && state.phase === 'countdown' && sec <= 3) play('count');
+    if (state?.phase === 'playing' && !state.spectator) {
+      const lifeEl = root.querySelector('[data-life]');
+      const clockEl = lifeEl && state.play.alive ? lifeEl : root.querySelector('[data-clock="time"]');
+      timeAlert(clockEl, (lifeEl && state.play.alive ? life : left) / 1000);
+    } else if (state?.phase === 'playing' && state.spectator) timeAlert(root.querySelector('[data-clock="time"]'), left / 1000);
+    else clearTimeAlert();
     lastSecond = sec;
     raf = requestAnimationFrame(loop);
   };
@@ -320,10 +342,10 @@ function roomHeader() {
   return h(
     'div',
     { class: 'topbar room-top' },
-    h('button', { class: 'btn ghost small', onclick: () => { if (tv || state.phase === 'lobby' || confirm('Sair da sala?')) leaveRoom(); } }, tv ? '← Fechar telão' : '← Sair'),
-    h('span', {}, `${modeOf().icon} ${modeOf().name}`),
+    h('button', { class: 'btn ghost small', onclick: () => { if (tv || state.phase === 'lobby' || confirm('Sair da sala?')) leaveRoom(); } }, tv ? ['Fechar telão'] : [icon('back'), 'Sair']),
+    h('span', { class: 'topbar-title' }, modeIcon(modeOf().id, 'tiny'), modeOf().name),
     h('span', { class: 'room-code-small' }, 'Sala ', h('strong', {}, state.code)),
-    !tv ? h('a', { class: 'btn ghost small', href: `?tela=${state.code}`, target: '_blank', rel: 'noopener', title: 'Abrir o telão em outra aba/tela' }, '📺') : '',
+    !tv ? h('a', { class: 'btn ghost small', href: `?tela=${state.code}`, target: '_blank', rel: 'noopener', title: 'Abrir o telão em outra aba/tela', 'aria-label': 'Abrir o telão' }, icon('tv')) : '',
     muteButton(h)
   );
 }
@@ -337,7 +359,7 @@ function playerRow(p, right = []) {
     'li',
     { class: `player ${p.connected ? '' : 'off'} ${p.id === state.you ? 'me' : ''}` },
     avatarEl(p),
-    h('span', { class: 'pname' }, p.name, p.id === state.you ? h('small', {}, ' (você)') : '', p.id === state.hostId ? h('span', { title: 'Anfitrião' }, ' 👑') : '', p.connected ? '' : h('small', {}, ' · desconectado')),
+    h('span', { class: 'pname' }, p.name, p.id === state.you ? h('small', {}, ' (você)') : '', p.id === state.hostId ? h('span', { class: 'host-mark', title: 'Anfitrião' }, icon('crown', 'tiny')) : '', p.connected ? '' : h('small', {}, ' · desconectado')),
     right
   );
 }
@@ -360,8 +382,8 @@ function arenaLobby(s, el) {
   const need = Math.max(0, 2 - s.players.length);
   el.replaceChildren(
     h('div', { class: 'card code-card arena-card' },
-      h('p', {}, '🌐 Arena Pública'),
-      h('h2', {}, `${mode.icon} ${mode.name}`),
+      h('p', { class: 'eyebrow' }, icon('zap', 'tiny'), ' Arena Pública'),
+      h('h2', {}, mode.name),
       h('p', { class: 'hint' }, Object.entries(mode.options).map(([k, spec]) => `${spec.label}: ${formatOption(spec, s.options[k])}`).join(' · ')),
       s.endsAt
         ? h('div', { class: 'arena-count' }, 'Começa em ', h('strong', { 'data-clock': 'count' }, ''), 's')
@@ -376,17 +398,17 @@ function arenaLobby(s, el) {
 
 // Convite: mandar o link da sala pelo WhatsApp, pelo menu do celular, copiar ou QR.
 function shareBox(code, link, mode) {
-  const text = `Bora jogar Trama comigo? ${mode ? `${mode.icon} ${mode.name} · ` : ''}sala ${code}: ${link}`;
+  const text = `Bora jogar Trama comigo? ${mode ? `${mode.name} · ` : ''}sala ${code}: ${link}`;
   const qr = h('img', { class: 'qr share-qr hidden', alt: `QR code para entrar na sala ${code}` });
   return h('div', { class: 'share-box' },
     h('a', { class: 'link-text', href: link, onclick: (e) => { e.preventDefault(); copy(link); } }, link.replace(/^https?:\/\//, '')),
     h('div', { class: 'row-actions center' },
-      h('a', { class: 'btn whatsapp', href: `https://wa.me/?text=${encodeURIComponent(text)}`, target: '_blank', rel: 'noopener' }, '💬 Enviar no WhatsApp'),
-      navigator.share ? h('button', { class: 'btn ghost', onclick: () => navigator.share({ title: 'Trama', text, url: link }).catch(() => {}) }, '📤 Enviar link') : '',
-      h('button', { class: 'btn ghost', onclick: () => copy(link) }, '🔗 Copiar link')),
+      h('a', { class: 'btn whatsapp', href: `https://wa.me/?text=${encodeURIComponent(text)}`, target: '_blank', rel: 'noopener' }, icon('chat'), 'Enviar no WhatsApp'),
+      navigator.share ? h('button', { class: 'btn ghost', onclick: () => navigator.share({ title: 'Trama', text, url: link }).catch(() => {}) }, icon('share'), 'Enviar link') : '',
+      h('button', { class: 'btn ghost', onclick: () => copy(link) }, icon('link'), 'Copiar link')),
     h('div', { class: 'row-actions center' },
-      h('button', { class: 'btn ghost small', onclick: () => { if (!qr.src) qr.src = `api/qr?d=${encodeURIComponent(link)}`; qr.classList.toggle('hidden'); } }, '▦ Mostrar QR code'),
-      h('a', { class: 'btn ghost small', href: `?tela=${code}`, target: '_blank', rel: 'noopener' }, '📺 Abrir telão (TV)')),
+      h('button', { class: 'btn ghost small', onclick: () => { if (!qr.src) qr.src = `api/qr?d=${encodeURIComponent(link)}`; qr.classList.toggle('hidden'); } }, icon('qr'), 'QR code'),
+      h('a', { class: 'btn ghost small', href: `?tela=${code}`, target: '_blank', rel: 'noopener' }, icon('tv'), 'Abrir telão (TV)')),
     qr);
 }
 
@@ -406,7 +428,7 @@ function lobbyView() {
             h('button', { class: `chip ${s.options[key] === v ? 'on' : ''}`, disabled: !host, onclick: () => net.send({ t: 'options', options: { [key]: v } }) }, formatOption(spec, v)))));
       const modeCard = (m) =>
         h('button', { class: `mode-card small ${m.category} ${s.options.mode === m.id ? 'chosen' : ''}`, disabled: !host && s.options.mode !== m.id, onclick: () => host && net.send({ t: 'options', options: { mode: m.id } }) },
-          h('span', { class: 'mode-icon' }, m.icon), h('span', { class: 'mode-text' }, h('strong', {}, m.name), h('small', {}, m.short)));
+          h('span', { class: 'mode-icon' }, modeIcon(m.id)), h('span', { class: 'mode-text' }, h('strong', {}, m.name), h('small', {}, m.short)));
       const modes = Object.values(MULTI_MODES);
       el.replaceChildren(
         h('div', { class: 'card code-card' },
@@ -416,8 +438,8 @@ function lobbyView() {
         h('div', { class: 'lobby-grid' },
           h('div', { class: 'card' },
             h('h3', {}, `Jogadores (${s.players.length})`),
-            h('ul', { class: 'players' }, s.players.map((p) => playerRow(p, h('span', { class: 'ready' }, p.id === s.hostId ? '' : p.ready ? '✅ pronto' : '⏳')))),
-            s.tv ? h('p', { class: 'hint' }, '📺 Telão conectado — a partida vai aparecer grande na TV.') : ''),
+            h('ul', { class: 'players' }, s.players.map((p) => playerRow(p, h('span', { class: 'ready' }, p.id === s.hostId ? '' : p.ready ? h('span', { class: 'ok' }, icon('check', 'tiny'), 'pronto') : h('span', { class: 'muted' }, 'esperando'))))),
+            s.tv ? h('p', { class: 'hint' }, icon('tv', 'inline'), ' Telão conectado: a partida aparece grande na TV.') : ''),
           h('div', { class: 'card' },
             h('h3', {}, host ? 'Escolha o modo' : 'Modo escolhido'),
             h('p', { class: 'group-label' }, 'Clássicos'),
@@ -453,13 +475,13 @@ function tvLobbyView() {
             h('p', { class: 'tv-step' }, 'Aponte a câmera do celular para o QR code', h('br'), 'ou entre em ', h('strong', {}, location.host), ' e digite o código:'),
             h('div', { class: 'room-code' }, s.code))),
         h('div', { class: 'card' },
-          h('h3', {}, `${mode.icon} ${mode.name} `, h('span', { class: `badge ${mode.category}` }, mode.category === 'classico' ? 'clássico' : 'novo')),
+          h('h3', {}, modeIcon(mode.id, 'tiny'), ` ${mode.name} `, h('span', { class: `badge ${mode.category}` }, mode.category === 'classico' ? 'clássico' : 'novo')),
           h('ul', { class: 'rules' }, mode.rules.map((r) => h('li', {}, r))),
           h('p', { class: 'hint' }, Object.entries(mode.options).map(([k, spec]) => `${spec.label}: ${formatOption(spec, s.options[k])}`).join(' · '))),
         h('div', { class: 'tv-players' },
           s.players.length
-            ? s.players.map((p) => h('div', { class: `tv-player ${p.connected ? '' : 'off'}` }, h('div', { class: 'tv-avatar', style: `--hue:${hueOf(p.id)}` }, p.avatar), h('div', {}, p.name, p.id === s.hostId ? ' 👑' : ''), h('small', {}, p.id === s.hostId ? 'anfitrião' : p.ready ? '✅ pronto' : '…')))
-            : h('p', { class: 'section-sub' }, 'Ninguém entrou ainda. O primeiro a entrar vira o anfitrião 👑.')),
+            ? s.players.map((p) => h('div', { class: `tv-player ${p.connected ? '' : 'off'}` }, h('div', { class: 'tv-avatar', style: `--hue:${hueOf(p.id)}` }, p.avatar), h('div', {}, p.name), h('small', {}, p.id === s.hostId ? 'anfitrião' : p.ready ? 'pronto' : '…')))
+            : h('p', { class: 'section-sub' }, 'Ninguém entrou ainda. O primeiro a entrar vira o anfitrião.')),
         h('p', { class: 'section-sub center' }, host ? `${host.name} começa a partida pelo celular.` : '')
       );
     },
@@ -509,7 +531,7 @@ function gradePlay(s) {
   const myCount = h('strong', {}, '0');
   const aliveEl = h('strong', {}, '');
   const teamEl = h('strong', { class: 'team-score' }, '');
-  const deadEl = h('div', { class: 'eliminated hidden' }, h('strong', {}, '💀 Você foi eliminado'), h('span', {}, 'Acompanhe quem vai sobreviver!'));
+  const deadEl = h('div', { class: 'eliminated hidden' }, h('strong', {}, 'Você foi eliminado'), h('span', {}, 'Acompanhe quem vai sobreviver!'));
   const hud = mode.survival
     ? h('div', { class: 'hud' },
         h('div', { class: 'hud-item hud-time life' }, h('span', {}, 'Sua vida'), h('strong', { 'data-life': '1' }, '')),
@@ -584,7 +606,7 @@ function wsPlay(s, interactive) {
   let known = 0;
   const el = h('div', { class: 'playing' },
     hudBar(s, h('div', { class: 'hud-item' }, h('span', {}, interactive ? 'Meus pontos' : 'Achadas'), interactive ? myPts : h('strong', { class: 'ws-count' }, '0'))),
-    h('h2', { class: 'theme-title' }, s.play.free ? '🎲 Mistura · sem tema' : `Tema: ${s.play.theme}`),
+    h('h2', { class: 'theme-title' }, s.play.free ? 'Mistura · sem tema' : `Tema: ${s.play.theme}`),
     h('div', { class: 'play-area' }, ws.el, h('div', { class: 'side-col' },
       h('div', { class: 'found-panel' }, h('h3', {}, 'Palavras'), list),
       s.play.free && interactive ? h('div', { class: 'found-panel' }, h('h3', {}, 'Suas extras'), extras) : '',
@@ -661,7 +683,7 @@ function resultsView(s) {
           h('div', { class: 'podium-avatar' }, p.avatar),
           h('div', { class: 'podium-name' }, p.name),
           h('div', { class: 'podium-pts' }, `${x.total} pts`),
-          h('div', { class: 'podium-block' }, ['🥇', '🥈', '🥉'][i]));
+          h('div', { class: 'podium-block' }, `${i + 1}º`));
       }))
     : '';
 
@@ -669,7 +691,7 @@ function resultsView(s) {
   const stagger = () => `animation-delay:${Math.min((delay += 0.02), 0.8)}s`;
   const wordChip = (w) =>
     h('span', { class: `wchip ${w.status}`, style: stagger(), title: w.status === 'unique' ? 'Só esta pessoa achou' : `${w.by} pessoas acharam` },
-      w.status === 'unique' ? '★ ' : '', w.w.toUpperCase(), w.status === 'shared' ? h('span', { class: 'by-count', 'aria-label': `${w.by} pessoas` }, `👥${w.by}`) : '', h('small', {}, `+${w.pts}`));
+      w.status === 'unique' ? '★ ' : '', w.w.toUpperCase(), w.status === 'shared' ? h('span', { class: 'by-count', 'aria-label': `${w.by} pessoas` }, `×${w.by}`) : '', h('small', {}, `+${w.pts}`));
 
   const detailFor = (id) => {
     const d = r.players?.[id];
@@ -683,7 +705,7 @@ function resultsView(s) {
         : h('small', { class: 'muted' }, 'Nenhuma palavra');
     }
     if (r.type === 'sudoku') {
-      return h('small', {}, d.done ? `✅ Terminou em ${d.place}º · ${fmtTime(d.seconds)} · ${d.errors} erro(s)` : `Não terminou · ${d.filled}/${r.empty} números certos · ${d.errors} erro(s)`);
+      return h('small', {}, d.done ? `Terminou em ${d.place}º · ${fmtTime(d.seconds)} · ${d.errors} erro(s)` : `Não terminou · ${d.filled}/${r.empty} números certos · ${d.errors} erro(s)`);
     }
     return '';
   };
@@ -697,7 +719,7 @@ function resultsView(s) {
         h('strong', {}, p.name),
         h('span', { class: 'rp-round' }, `+${r.scores?.[x.id] ?? 0} na rodada`),
         h('span', { class: 'rp-total' }, `${x.total} pts`),
-        x.id !== s.you && !s.spectator ? h('button', { class: 'report-btn', title: `Denunciar ${p.name}`, onclick: () => reportPlayer(p, s.code) }, '⚑') : ''),
+        x.id !== s.you && !s.spectator ? h('button', { class: 'report-btn', title: `Denunciar ${p.name}`, onclick: () => reportPlayer(p, s.code), 'aria-label': `Denunciar ${p.name}` }, icon('flag', 'tiny')) : ''),
       h('div', { class: 'wchips' }, detailFor(x.id)));
   });
 
@@ -706,15 +728,14 @@ function resultsView(s) {
   if (r.type === 'grade') {
     legend = h('p', { class: 'legend' },
       h('span', { class: 'wchip unique' }, '★ única'),
-      h('span', { class: 'wchip shared' }, 'repetida ', h('span', { class: 'by-count' }, '👥2')),
+      h('span', { class: 'wchip shared' }, 'repetida ', h('span', { class: 'by-count' }, '×2')),
       h('span', { class: 'legend-note' }, 'Únicas e repetidas valem os mesmos pontos.'));
     extra = h('div', {},
       r.totals ? h('div', { class: 'tank-box' }, h('h3', {}, 'Tanque da rodada'), tank(r.totals.unique, r.totals.shared, 'big'), h('p', { class: 'hint' }, `${r.totals.distinct} palavras diferentes achadas por todos`)) : '',
-      r.longest ? h('p', { class: 'highlight' }, '📏 Maior palavra da rodada: ', h('strong', {}, r.longest.w.toUpperCase()), ` (${byId[r.longest.id]?.name || '—'})`) : '',
       r.missed?.length ? h('div', { class: 'missed' }, h('h4', {}, 'Algumas palavras que ninguém achou:'), h('p', {}, r.missed.map((w) => w.toUpperCase()).join(' · '))) : '');
   } else if (r.type === 'wordsearch') {
     const missing = r.words.filter((w) => !w.by);
-    extra = h('p', { class: 'highlight' }, r.free ? '🎲 Mistura' : `Tema: ${r.theme}`, missing.length ? ` · Ninguém achou: ${missing.map((w) => w.display.toUpperCase()).join(', ')}` : ' · Todas as palavras foram achadas!');
+    extra = h('p', { class: 'highlight' }, r.free ? 'Mistura' : `Tema: ${r.theme}`, missing.length ? ` · Ninguém achou: ${missing.map((w) => w.display.toUpperCase()).join(', ')}` : ' · Todas as palavras foram achadas!');
   } else if (r.type === 'sudoku') {
     extra = h('p', { class: 'highlight' }, `Sudoku ${DIFF[r.difficulty]} · bônus de pódio: 1º +500 · 2º +250 · 3º +100`);
   }
@@ -725,10 +746,10 @@ function resultsView(s) {
   const statsPanel = h('div', { class: 'stats-panel hidden' }, extra, legend, h('div', { class: 'result-list' }, rows));
   const statsBtn = h('button', { class: 'btn ghost', onclick: () => {
     const open = statsPanel.classList.toggle('hidden') === false;
-    statsBtn.textContent = open ? 'Fechar estatísticas' : '📊 Mais estatísticas';
+    statsBtn.replaceChildren(icon('chart'), open ? 'Fechar estatísticas' : 'Mais estatísticas');
     if (open) statsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } }, '📊 Mais estatísticas');
-  const after = h('div', { class: 'after-reveal hidden' }, podium, progressEl, globalEl, h('div', { class: 'row-actions center' }, statsBtn), statsPanel);
+  } }, icon('chart'), 'Mais estatísticas');
+  const after = h('div', { class: 'after-reveal hidden' }, podium, longestCards(r, byId), progressEl, globalEl, h('div', { class: 'row-actions center' }, statsBtn), statsPanel);
 
   // 1º a animação; depois pódio, posição global, estatísticas e botões
   const teamRound = teamMode ? teamRoundFor(r, s) : null;
@@ -750,7 +771,7 @@ function resultsView(s) {
   });
 
   const el = h('div', { class: 'results card' },
-    h('h2', {}, final ? '🏆 Fim de jogo!' : `Fim da rodada ${s.round} de ${s.options.rounds}`),
+    h('h2', {}, final ? 'Fim de jogo!' : `Fim da rodada ${s.round} de ${s.options.rounds}`),
     reveal.el,
     after,
     actions,
@@ -762,7 +783,7 @@ function resultsView(s) {
     update(st) {
       if (st.spectator) {
         const hp = playerById(st.hostId);
-        actions.replaceChildren(h('p', { class: 'section-sub' }, hp ? `${hp.name} 👑 ${final ? 'pode iniciar a revanche' : 'inicia a próxima rodada'} pelo celular.` : ''));
+        actions.replaceChildren(h('p', { class: 'section-sub' }, hp ? `${hp.name} ${final ? 'pode iniciar a revanche' : 'inicia a próxima rodada'} pelo celular.` : ''));
         return;
       }
       if (st.public) {
@@ -775,7 +796,7 @@ function resultsView(s) {
       }
       actions.replaceChildren(
         isHost()
-          ? h('button', { class: 'btn big', onclick: () => net.send({ t: final ? 'rematch' : 'next' }) }, final ? '🔁 Revanche' : 'Próxima rodada →')
+          ? h('button', { class: 'btn big', onclick: () => net.send({ t: final ? 'rematch' : 'next' }) }, final ? 'Revanche' : 'Próxima rodada')
           : h('p', { class: 'section-sub' }, final ? 'O anfitrião pode iniciar a revanche.' : 'Aguardando o anfitrião iniciar a próxima rodada…'),
         h('button', { class: 'btn ghost', onclick: leaveRoom }, 'Sair da sala'));
     },
@@ -837,13 +858,13 @@ function showRatingAndAchievements(s, el) {
     const before = leagueOf(r.before);
     const after = leagueOf(r.after);
     el.append(h('p', { class: `rating-change ${r.delta >= 0 ? 'up' : 'down'}` },
-      `${after.icon} Nível ${r.before} → `, h('strong', {}, String(r.after)), ` (${r.delta >= 0 ? '+' : ''}${r.delta})`,
+      `Nível ${r.before} → `, h('strong', {}, String(r.after)), ` (${r.delta >= 0 ? '+' : ''}${r.delta})`,
       before.key !== after.key ? h('span', { class: 'league-up' }, r.delta > 0 ? ` · Subiu para ${after.name}!` : ` · Caiu para ${after.name}`) : ` · ${after.name}`));
   }
   const fresh = (s.myAchievements || []).map((k) => achievementByKey[k]).filter(Boolean);
   if (fresh.length) {
     markSeenAchievements(fresh.map((a) => a.key));
-    el.append(h('div', { class: 'achv-new' }, h('p', {}, '🏅 Conquista nova!'), h('div', { class: 'achv-list' }, fresh.map((a) => h('span', { class: 'achv-pill' }, `${a.icon} ${a.name}`)))));
+    el.append(h('div', { class: 'achv-new' }, h('p', {}, icon('medal', 'inline'), ' Conquista nova!'), h('div', { class: 'achv-list' }, fresh.map((a) => h('span', { class: 'achv-pill' }, a.name)))));
     play('win');
   }
 }
@@ -857,4 +878,16 @@ async function reportPlayer(p, room) {
   } catch (e) {
     toast(root, e.message, 'bad');
   }
+}
+
+// Maior palavra que existia na grade × maior palavra que alguém achou.
+function longestCards(r, byId) {
+  if (r.type !== 'grade' || (!r.longestPossible && !r.longest)) return '';
+  const card = (label, w, who) => h('div', { class: 'longest-card' },
+    h('span', { class: 'lc-label' }, label),
+    h('strong', { class: 'lc-word' }, w ? w.toUpperCase() : '—'),
+    h('span', { class: 'lc-sub' }, w ? `${w.length} letras${who ? ` · ${who}` : ''}` : 'ninguém achou'));
+  return h('div', { class: 'longest-row' },
+    card('Maior palavra encontrada', r.longest?.w, r.longest ? byId[r.longest.id]?.name : ''),
+    card('Maior palavra da grade', r.longestPossible, ''));
 }

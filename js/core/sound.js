@@ -37,6 +37,8 @@ const SOUNDS = {
   bad: () => tone(180, 0, 0.18, { type: 'square', vol: 0.06, slide: 0.7 }),
   dup: () => { tone(440, 0, 0.08, { type: 'triangle' }); tone(440, 0.1, 0.08, { type: 'triangle' }); },
   tick: () => tone(1200, 0, 0.04, { type: 'square', vol: 0.04 }),
+  // fim de tempo: batida grave + bipe agudo (mais dramático)
+  alarm: () => { tone(110, 0, 0.18, { type: 'sine', vol: 0.22, slide: 0.6 }); tone(1480, 0.02, 0.09, { type: 'square', vol: 0.05 }); },
   count: () => tone(520, 0, 0.12, { type: 'triangle', vol: 0.12 }),
   go: () => tone(880, 0, 0.3, { type: 'triangle', vol: 0.14 }),
   end: () => { [784, 659, 523].forEach((f, i) => tone(f, i * 0.12, 0.2, { type: 'triangle', vol: 0.12 })); },
@@ -59,9 +61,24 @@ export function setMuted(m) {
 
 // Botão 🔊/🔇 reutilizável.
 export function muteButton(h) {
-  const btn = h('button', { class: 'btn ghost small mute', type: 'button', 'aria-label': 'Som', onclick: () => { setMuted(!muted); if (!muted) play('good'); } });
-  const paint = () => (btn.textContent = muted ? '🔇' : '🔊');
+  const btn = h('button', { class: 'btn ghost small icon-btn mute', type: 'button', 'aria-label': 'Ligar ou desligar o som', onclick: () => { setMuted(!muted); if (!muted) play('good'); } });
+  const paint = () => {
+    btn.replaceChildren(svg(muted ? MUTE : VOL));
+    btn.title = muted ? 'Som desligado' : 'Som ligado';
+  };
   paint();
   listeners.add(paint);
   return btn;
+}
+
+const VOL = '<path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/>';
+const MUTE = '<path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="m22 9-6 6M16 9l6 6"/>';
+function svg(inner) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  el.setAttribute('viewBox', '0 0 24 24');
+  el.setAttribute('class', 'ico');
+  el.setAttribute('aria-hidden', 'true');
+  for (const [k, v] of Object.entries({ fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })) el.setAttribute(k, v);
+  el.innerHTML = inner;
+  return el;
 }

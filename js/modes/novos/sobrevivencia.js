@@ -108,7 +108,7 @@ export default {
       const survived = Math.floor(timer.elapsed);
       const bonus = Math.floor(survived / 10);
       score += bonus;
-      if (bonus) items.push({ label: '⏳ Bônus', pts: bonus });
+      if (bonus) items.push({ label: 'Bônus de tempo', pts: bonus });
       api.end({
         score,
         revealItems: items,

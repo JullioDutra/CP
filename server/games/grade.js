@@ -1,7 +1,7 @@
 // Jogo de grade de letras: Grade em Grupo, Grade Bônus, Arena Sobrevivência e Times.
 // Palavras repetidas entre jogadores valem pontos normalmente; ser única ou
 // repetida só aparece nas estatísticas do fim da rodada (o "tanque").
-import { makeGrid, findPath, isAdjacent, wordPoints, sortMissed, MIN_LETTERS } from '../../js/core/letters.js';
+import { makeGrid, findPath, isAdjacent, wordPoints, sortMissed, longestWord, MIN_LETTERS } from '../../js/core/letters.js';
 import { isWord, normalize } from '../../js/core/dict.js';
 import { scoreRound, bonusCells, bonusMultiplier, SURVIVAL } from '../../js/core/multimodes.js';
 
@@ -148,6 +148,7 @@ const game = {
       players,
       totals,
       longest,
+      longestPossible: longestWord(rd.possible),
       extras,
       placement,
       missed: sortMissed(rd.possible.filter((w) => !allFound.has(w))).slice(0, 30),

@@ -1,4 +1,6 @@
 // Utilitários de interface compartilhados pelos modos.
+import { timeAlert, parseClock } from './timealert.js';
+
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
@@ -70,5 +72,11 @@ export function hud(items) {
       return h('div', { class: `hud-item hud-${key}` }, h('span', {}, label), values[key]);
     })
   );
-  return { el, set: (key, v) => (values[key].textContent = v) };
+  return {
+    el,
+    set(key, v) {
+      values[key].textContent = v;
+      if (key === 'time') timeAlert(values[key], parseClock(v));
+    },
+  };
 }

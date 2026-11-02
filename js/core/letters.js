@@ -108,3 +108,12 @@ export const POINTS_HINT = '3=1 · 4=2 · 5=4 · 6=7 · 7=11 · 8=16 · 9=22 · 
 export function sortMissed(list) {
   return list.slice().sort((a, b) => (isCommon(b) - isCommon(a)) || b.length - a.length || commonRankOf(a) - commonRankOf(b) || a.localeCompare(b));
 }
+
+// Maior palavra da grade, preferindo uma palavra conhecida (comum) entre as de mesmo tamanho.
+export function longestWord(words) {
+  let best = null;
+  for (const w of words) {
+    if (!best || w.length > best.length || (w.length === best.length && commonRankOf(w) < commonRankOf(best))) best = w;
+  }
+  return best;
+}
