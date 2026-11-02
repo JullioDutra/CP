@@ -31,9 +31,12 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) {
       let body = '';
       for await (const chunk of req) { body += chunk; if (Buffer.byteLength(body) > 65536) { res.writeHead(413); res.end(); return; } }
+      const t0 = performance.now();
       const result = await backend({ action: 'api', path: url.pathname + url.search, method: req.method,
         profile: req.headers['x-trama-perfil'], body, ip: req.headers['x-vercel-forwarded-for'] || req.socket.remoteAddress });
-      res.writeHead(result.status, result.headers); res.end(result.body); return;
+      // tempo gasto no banco/servidor do jogo (ajuda a medir a latência em produção)
+      res.writeHead(result.status, { ...result.headers, 'server-timing': `backend;desc="${inProcess ? 'postgres' : 'edge'}";dur=${(performance.now() - t0).toFixed(0)}` });
+      res.end(result.body); return;
     }
     const rel = publicPath(url.pathname);
     const file = new URL(rel, ROOT);
