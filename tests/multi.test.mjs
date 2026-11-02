@@ -225,6 +225,54 @@ const mkRoom = (clock, extra = {}) => new Room('ABCD', { now: clock.now, setTime
   assert.equal(room.rounds[0].players[beto.id].extras.length, 1);
 }
 
+// ---------- Coroa de vitórias seguidas + Jogar novamente ----------
+{
+  const clock = fakeClock();
+  const room = mkRoom(clock);
+  const ana = room.addPlayer({ name: 'Ana' });
+  const beto = room.addPlayer({ name: 'Beto' });
+  room.setOptions(ana.id, { mode: 'grupo-classico', rounds: 1, seconds: 60 });
+  const words = () => solve(room.rd.grid, room.rd.size).sort((a, b) => b.length - a.length);
+  // partida em que `winner` faz mais pontos (ou empate, se tie)
+  const playMatch = (winner, tie = false) => {
+    clock.advance(3500);
+    const ws = words();
+    room.act(winner.id, { a: 'submit', word: ws[0] });
+    const other = winner.id === ana.id ? beto : ana;
+    if (tie) room.act(other.id, { a: 'submit', word: ws[0] });
+    else room.act(other.id, { a: 'submit', word: ws[ws.length - 1] });
+    clock.advance(60 * 1000 + 400);
+    assert.equal(room.phase, 'final');
+  };
+  room.start(ana.id);
+  playMatch(ana);
+  assert.deepEqual(room.crown, { id: ana.id, streak: 1 });
+  assert.equal(room.crownEvent.type, 'first');
+  assert.equal(room.stateFor(beto.id).players.find((p) => p.id === ana.id).crown, 1);
+  assert.throws(() => room.rematch(beto.id, true), /anfitrião/);
+  room.rematch(ana.id, true); // Jogar novamente: mesmas opções, já começa
+  assert.equal(room.phase, 'countdown');
+  assert.equal(room.options.seconds, 60);
+  playMatch(ana);
+  assert.deepEqual(room.crown, { id: ana.id, streak: 2 }, 'sequência continua');
+  assert.equal(room.crownEvent.type, 'streak');
+  room.rematch(ana.id, true);
+  playMatch(ana, true);
+  assert.deepEqual(room.crown, { id: ana.id, streak: 2 }, 'empate: dona da coroa segura');
+  assert.equal(room.crownEvent.type, 'kept');
+  room.rematch(ana.id); // Trocar modo: volta ao saguão, coroa continua
+  assert.equal(room.phase, 'lobby');
+  assert.equal(room.crown.id, ana.id);
+  room.start(ana.id);
+  playMatch(beto);
+  assert.deepEqual(room.crown, { id: beto.id, streak: 1 }, 'outra pessoa vence: a coroa passa');
+  assert.equal(room.crownEvent.type, 'stolen');
+  assert.equal(room.crownEvent.from, ana.id);
+  assert.equal(room.crownEvent.fromStreak, 2);
+  room.leave(beto.id);
+  assert.equal(room.crown, null, 'quem sai da sala perde a coroa');
+}
+
 // ---------- Sudoku Duelo ----------
 {
   const clock = fakeClock();

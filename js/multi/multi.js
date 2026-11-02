@@ -352,7 +352,31 @@ function roomHeader() {
 }
 
 function avatarEl(p) {
-  return h('span', { class: 'avatar', style: `--hue:${hueOf(p.id)}` }, p.avatar);
+  return h('span', { class: `avatar ${p.crown ? 'crowned' : ''}`, style: `--hue:${hueOf(p.id)}` }, p.avatar, crownBadge(p));
+}
+
+// Coroa de quem venceu a última partida, com o número de vitórias seguidas.
+function crownBadge(p) {
+  if (!p?.crown) return '';
+  return h('span', { class: 'crown-badge', title: `${p.crown} ${p.crown === 1 ? 'vitória' : 'vitórias seguidas'}`, 'aria-label': `Coroa: ${p.crown} ${p.crown === 1 ? 'vitória' : 'vitórias seguidas'}` },
+    icon('crown'), p.crown > 1 ? h('b', {}, p.crown) : '');
+}
+
+// Anúncio do fim da partida: quem ficou com a coroa.
+function crownBanner(s) {
+  const e = s.crownEvent;
+  if (!e) return '';
+  const who = (id) => s.players.find((p) => p.id === id);
+  const p = who(e.id), from = who(e.from);
+  let title, sub;
+  if (e.type === 'streak') { title = `${p?.name} continua com a coroa!`; sub = `${e.streak} vitórias seguidas`; }
+  else if (e.type === 'stolen') { title = `${p?.name} tomou a coroa${from ? ` de ${from.name}` : ''}!`; sub = e.fromStreak > 1 ? `Acabou a sequência de ${e.fromStreak} vitórias` : 'Primeira vitória da sequência'; }
+  else if (e.type === 'first') { title = `${p?.name} ganhou a coroa!`; sub = 'Vença a próxima para começar uma sequência'; }
+  else if (e.type === 'kept') { title = `Empate! ${p?.name} segura a coroa`; sub = `${e.streak} ${e.streak === 1 ? 'vitória' : 'vitórias seguidas'}`; }
+  else { title = 'Empate no 1º lugar'; sub = 'A coroa ficou sem dono'; }
+  return h('div', { class: `crown-banner ${e.type}` },
+    h('span', { class: 'cb-icon' }, p ? h('span', { class: 'cb-avatar' }, p.avatar) : '', icon('crown')),
+    h('div', {}, h('strong', {}, title), h('span', {}, sub)));
 }
 
 function playerRow(p, right = []) {
@@ -360,7 +384,7 @@ function playerRow(p, right = []) {
     'li',
     { class: `player ${p.connected ? '' : 'off'} ${p.id === state.you ? 'me' : ''}` },
     avatarEl(p),
-    h('span', { class: 'pname' }, p.name, p.id === state.you ? h('small', {}, ' (você)') : '', p.id === state.hostId ? h('span', { class: 'host-mark', title: 'Anfitrião' }, icon('crown', 'tiny')) : '', p.connected ? '' : h('small', {}, ' · desconectado')),
+    h('span', { class: 'pname' }, p.name, p.id === state.you ? h('small', {}, ' (você)') : '', p.id === state.hostId ? h('span', { class: 'host-mark', title: 'Quem criou a sala' }, 'anfitrião') : '', p.connected ? '' : h('small', {}, ' · desconectado')),
     right
   );
 }
@@ -481,7 +505,7 @@ function tvLobbyView() {
           h('p', { class: 'hint' }, Object.entries(mode.options).map(([k, spec]) => `${spec.label}: ${formatOption(spec, s.options[k])}`).join(' · '))),
         h('div', { class: 'tv-players' },
           s.players.length
-            ? s.players.map((p) => h('div', { class: `tv-player ${p.connected ? '' : 'off'}` }, h('div', { class: 'tv-avatar', style: `--hue:${hueOf(p.id)}` }, p.avatar), h('div', {}, p.name), h('small', {}, p.id === s.hostId ? 'anfitrião' : p.ready ? 'pronto' : '…')))
+            ? s.players.map((p) => h('div', { class: `tv-player ${p.connected ? '' : 'off'}` }, h('div', { class: `tv-avatar ${p.crown ? 'crowned' : ''}`, style: `--hue:${hueOf(p.id)}` }, p.avatar, crownBadge(p)), h('div', {}, p.name), h('small', {}, p.id === s.hostId ? 'anfitrião' : p.ready ? 'pronto' : '…')))
             : h('p', { class: 'section-sub' }, 'Ninguém entrou ainda. O primeiro a entrar vira o anfitrião.')),
         h('p', { class: 'section-sub center' }, host ? `${host.name} começa a partida pelo celular.` : '')
       );
@@ -750,7 +774,7 @@ function resultsView(s) {
     statsBtn.replaceChildren(icon('chart'), open ? 'Fechar estatísticas' : 'Mais estatísticas');
     if (open) statsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } }, icon('chart'), 'Mais estatísticas');
-  const after = h('div', { class: 'after-reveal hidden' }, podium, longestCards(r, byId), progressEl, globalEl, h('div', { class: 'row-actions center' }, statsBtn), statsPanel);
+  const after = h('div', { class: 'after-reveal hidden' }, final ? crownBanner(s) : '', podium, longestCards(r, byId), progressEl, globalEl, h('div', { class: 'row-actions center' }, statsBtn), statsPanel);
 
   // 1º a animação; depois pódio, posição global, estatísticas e botões
   const teamRound = teamMode ? teamRoundFor(r, s) : null;
@@ -787,7 +811,7 @@ function resultsView(s) {
     update(st) {
       if (st.spectator) {
         const hp = playerById(st.hostId);
-        actions.replaceChildren(h('p', { class: 'section-sub' }, hp ? `${hp.name} ${final ? 'pode iniciar a revanche' : 'inicia a próxima rodada'} pelo celular.` : ''));
+        actions.replaceChildren(h('p', { class: 'section-sub' }, hp ? `${hp.name} ${final ? 'pode jogar novamente' : 'inicia a próxima rodada'} pelo celular.` : ''));
         return;
       }
       if (st.public) {
@@ -799,9 +823,12 @@ function resultsView(s) {
         return;
       }
       actions.replaceChildren(
-        isHost()
-          ? h('button', { class: 'btn big', onclick: () => net.send({ t: final ? 'rematch' : 'next' }) }, final ? 'Revanche' : 'Próxima rodada')
-          : h('p', { class: 'section-sub' }, final ? 'O anfitrião pode iniciar a revanche.' : 'Aguardando o anfitrião iniciar a próxima rodada…'),
+        ...[isHost()
+          ? (final
+            ? [h('button', { class: 'btn big', onclick: () => net.send({ t: 'rematch', again: true }) }, icon('refresh'), 'Jogar novamente'),
+               h('button', { class: 'btn ghost', onclick: () => net.send({ t: 'rematch' }) }, 'Trocar modo')]
+            : h('button', { class: 'btn big', onclick: () => net.send({ t: 'next' }) }, 'Próxima rodada'))
+          : h('p', { class: 'section-sub' }, final ? 'O anfitrião pode começar outra partida. A coroa continua valendo!' : 'Aguardando o anfitrião iniciar a próxima rodada…')].flat(),
         h('button', { class: 'btn ghost', onclick: leaveRoom }, 'Sair da sala'));
     },
   };

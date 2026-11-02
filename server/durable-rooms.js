@@ -133,7 +133,7 @@ export async function handleMulti(sql, store, { session, msg }, now = Date.now()
           case 'options': room.setOptions(id, m.options || {}); break;
           case 'start': room.start(id); break;
           case 'next': room.next(id); break;
-          case 'rematch': room.rematch(id); break;
+          case 'rematch': room.rematch(id, !!m.again); break;
           case 'act': out.push({ t: 'res', rid: m.rid, result: await room.act(id, m) }); break;
           case 'react': {
             const reaction = room.react(id, m.emoji);

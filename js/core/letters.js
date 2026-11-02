@@ -109,8 +109,14 @@ export function sortMissed(list) {
   return list.slice().sort((a, b) => (isCommon(b) - isCommon(a)) || b.length - a.length || commonRankOf(a) - commonRankOf(b) || a.localeCompare(b));
 }
 
-// Maior palavra da grade, preferindo uma palavra conhecida (comum) entre as de mesmo tamanho.
-export function longestWord(words) {
+// Maior palavra da grade: a maior palavra conhecida (comum); se não houver nenhuma comum,
+// a maior de todas. Entre as de mesmo tamanho, a mais frequente.
+export function longestWord(words, preferCommon = true) {
+  const common = preferCommon ? words.filter((w) => isCommon(w)) : [];
+  return longestOf(common.length ? common : words);
+}
+
+function longestOf(words) {
   let best = null;
   for (const w of words) {
     if (!best || w.length > best.length || (w.length === best.length && commonRankOf(w) < commonRankOf(best))) best = w;

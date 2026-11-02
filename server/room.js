@@ -67,6 +67,10 @@ export class Room {
     this.rounds = []; // resultados de cada rodada
     this.teams = {}; // playerId -> 'A' | 'B' (modo Times)
     this.finalResult = null; // níveis (Elo) e conquistas depois da partida
+    // Coroa: quem venceu a última partida desta sala e quantas vitórias seguidas tem.
+    // Passa para outra pessoa quando ela vence; some se o dono sair da sala.
+    this.crown = null; // { id, streak }
+    this.crownEvent = null; // o que mudou na última partida (para o anúncio no fim)
     this.lastActivity = now();
   }
 
@@ -138,6 +142,7 @@ export class Room {
   leave(id) {
     if (!this.players.has(id)) return;
     this.players.delete(id);
+    if (this.crown?.id === id) this.crown = null;
     delete this.teams[id];
     if (this.hostId === id) this.passHost();
     this.arenaCheck();
@@ -232,7 +237,9 @@ export class Room {
     this.countdown();
   }
 
-  rematch(id) {
+  // again = true: "Jogar novamente" (mesmas opções, já começa a contagem);
+  // senão volta ao saguão para trocar o modo. Nos dois casos a coroa continua.
+  rematch(id, again = false) {
     this.assertHost(id);
     if (this.phase !== 'final') throw new Error('A partida ainda não acabou');
     this.phase = 'lobby';
@@ -240,8 +247,35 @@ export class Room {
     this.rounds = [];
     this.rd = null;
     this.finalResult = null;
+    this.crownEvent = null;
     for (const p of this.players.values()) Object.assign(p, { total: 0, ready: false, rs: null });
-    this.touch();
+    if (again) this.beginMatch();
+    else this.touch();
+  }
+
+  // Fim da partida: a coroa fica com quem venceu sozinho em 1º (2+ jogadores).
+  // Empate em 1º: quem já tinha a coroa e empatou continua com ela (sem somar).
+  updateCrown() {
+    if (this.mode.teams) { this.crownEvent = null; return; }
+    const played = Object.keys(this.rounds[this.rounds.length - 1]?.scores || {});
+    const list = [...this.players.values()].filter((p) => played.includes(p.id)).sort((a, b) => b.total - a.total);
+    if (list.length < 2 || list[0].total <= 0) { this.crownEvent = null; return; }
+    const top = list.filter((p) => p.total === list[0].total);
+    const prev = this.crown;
+    if (top.length > 1) {
+      const kept = prev && top.some((p) => p.id === prev.id);
+      this.crown = kept ? prev : null;
+      this.crownEvent = { type: kept ? 'kept' : 'tie', id: kept ? prev.id : null, streak: kept ? prev.streak : 0, from: kept ? null : prev?.id || null };
+      return;
+    }
+    const w = top[0];
+    if (prev?.id === w.id) {
+      this.crown = { id: w.id, streak: prev.streak + 1 };
+      this.crownEvent = { type: 'streak', id: w.id, streak: this.crown.streak, from: null };
+    } else {
+      this.crown = { id: w.id, streak: 1 };
+      this.crownEvent = { type: prev ? 'stolen' : 'first', id: w.id, streak: 1, from: prev?.id || null, fromStreak: prev?.streak || 0 };
+    }
   }
 
   assertHost(id) {
@@ -316,7 +350,10 @@ export class Room {
       this.phase = this.round >= this.options.rounds ? 'final' : 'reveal';
       this.endsAt = null;
       this.closing = false;
-      if (this.phase === 'final') this.finalResult = this.onFinal(this) || null;
+      if (this.phase === 'final') {
+        this.updateCrown();
+        this.finalResult = this.onFinal(this) || null;
+      }
       // Arena: avança sozinha depois da revelação
       if (this.public && this.phase === 'reveal') {
         this.endsAt = this.now() + ARENA_NEXT_MS;
@@ -415,6 +452,8 @@ export class Room {
           const prog = playing && p.rs ? this.game.progress(p, this) : { points: 0, label: '' };
           return {
             id: p.id, name: p.name, avatar: p.avatar, connected: p.connected, ready: p.ready, total: p.total, hue: p.joinOrder,
+            // na tela final a coroa só "muda de dono" depois da revelação (o cliente usa crownEvent)
+            crown: this.crown?.id === p.id ? this.crown.streak : 0,
             roundPoints: prog.points, roundLabel: prog.label, team: this.teams[p.id] || null,
             // nível (Elo) e conquistas novas: só no fim da partida
             rating: fr && p.profileId ? fr.ratings?.[p.profileId] || null : undefined,
@@ -424,6 +463,7 @@ export class Room {
       lastRound: ['reveal', 'final'].includes(this.phase) ? last : undefined,
       history: this.phase === 'final' ? this.rounds.map((r) => ({ round: r.round, scores: r.scores })) : undefined,
       standings: this.standings(),
+      crownEvent: this.phase === 'final' ? this.crownEvent : undefined,
     };
   }
 }

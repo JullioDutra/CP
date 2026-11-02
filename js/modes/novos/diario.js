@@ -95,8 +95,8 @@ export default {
         revealItems: items,
         ranked: !practice,
         detail: day,
-        longest: { found: longestWord([...found]), possible: longestWord(words) },
-        summary: [['Dia', day.split('-').reverse().join('/')], ['Palavras', found.size], ['Maior encontrada', longestWord([...found])?.toUpperCase() || '—'], ['Maior da grade', longestWord(words)?.toUpperCase() || '—'], ['Partida', practice ? 'Treino (não conta)' : 'Oficial']],
+        longest: { found: longestWord([...found], false), possible: longestWord(words) },
+        summary: [['Dia', day.split('-').reverse().join('/')], ['Palavras', found.size], ['Maior encontrada', longestWord([...found], false)?.toUpperCase() || '—'], ['Maior da grade', longestWord(words)?.toUpperCase() || '—'], ['Partida', practice ? 'Treino (não conta)' : 'Oficial']],
         extra: missedWords(words, found),
         online: online && { ticket: online.ticket, palavras: [...found].map((w) => ({ w, path: paths[w] })) },
       });

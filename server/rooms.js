@@ -143,7 +143,7 @@ export class RoomManager {
       options: (m) => room.setOptions(playerId, m.options || {}),
       start: () => room.start(playerId),
       next: () => room.next(playerId),
-      rematch: () => room.rematch(playerId),
+      rematch: (m) => room.rematch(playerId, !!m.again),
       act: (m) => {
         Promise.resolve(room.act(playerId, m))
           .catch((e) => ({ ok: false, reason: e.message }))
