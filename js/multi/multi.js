@@ -546,6 +546,7 @@ function gradePlay(s) {
     bonus: s.play.bonus || {},
     onSubmit: async (w, path) => {
       const r = await net.act('submit', { word: w, path });
+      if (connectionTrouble(r)) { toast(root, 'Conexão instável. Envie a palavra de novo.', 'dup'); return { dup: true }; }
       // erro só pisca em vermelho/amarelo na grade; acerto mostra os pontos
       if (r.ok) toast(root, `${r.mult > 1 ? `×${r.mult}! ` : ''}+${r.pts}${r.gain ? ` · ❤️+${r.gain}s` : ''}`, 'good');
       return r;
@@ -615,6 +616,7 @@ function wsPlay(s, interactive) {
     interactive,
     onMark: async (cells) => {
       const r = await net.act('mark', { cells });
+      if (connectionTrouble(r)) { toast(root, 'Conexão instável. Marque de novo.', 'dup'); ws.flash(cells, 'dup'); return; }
       if (r.ok) {
         toast(root, `${r.extra ? 'Extra! ' : ''}${r.word.toUpperCase()} +${r.pts}`, 'good');
         play(r.extra ? 'good' : 'big');
@@ -921,4 +923,9 @@ function longestCards(r, byId) {
   return h('div', { class: 'longest-row' },
     card('Maior palavra encontrada', r.longest?.w, r.longest ? byId[r.longest.id]?.name : ''),
     card('Maior palavra da grade', r.longestPossible, ''));
+}
+
+// Falha de rede/servidor (não é palavra errada): o jogador vê amarelo e pode tentar de novo.
+function connectionTrouble(r) {
+  return !r?.ok && (r?.retry || /Sem conexão|Sem resposta/.test(r?.reason || ''));
 }

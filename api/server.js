@@ -47,17 +47,40 @@ const server = http.createServer(async (req, res) => {
   }
 });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Falhas passageiras do banco (conexões cheias, timeout): tenta de novo antes de desistir.
+async function backendRetry(payload, tries) {
+  for (let k = 0; ; k++) {
+    try { return await backend(payload); } catch (e) {
+      if (k >= tries - 1) throw e;
+      await sleep(250 * 3 ** k);
+    }
+  }
+}
 wss.on('connection', (ws) => {
   const session = randomUUID();
-  let queue = Promise.resolve(), queued = 0, closed = false, timer;
+  let queue = Promise.resolve(), queued = 0, closed = false, timer, failures = 0, phase = 'lobby';
   const send = (message) => { if (ws.readyState === 1) ws.send(JSON.stringify(message)); };
   const run = (msg) => {
     if (queued >= 24) { send({ t: 'error', message: 'Devagar!' }); return; }
     queued++;
     queue = queue.then(async () => {
-      const messages = await backend({ action: 'multi', session, msg });
-      for (const message of messages) send(message);
-    }).catch(e => { console.error('[multi]', e.message); if (!closed) ws.close(1011, 'Reconectando'); }).finally(() => queued--);
+      // jogadas e comandos tentam até 3 vezes; a consulta periódica, 1 vez (a próxima vem logo)
+      const messages = await backendRetry({ action: 'multi', session, msg }, msg.t === 'poll' ? 1 : 3);
+      failures = 0;
+      for (const message of messages) {
+        if (message.t === 'state' && message.state?.phase) phase = message.state.phase;
+        send(message);
+      }
+    }).catch(e => {
+      console.error('[multi]', e.message);
+      failures++;
+      // a palavra não se perde em silêncio: o celular avisa para enviar de novo (amarelo, não vermelho)
+      if (msg.t === 'act') send({ t: 'res', rid: msg.rid, result: { ok: false, retry: true, reason: 'Conexão instável. Envie de novo.' } });
+      else if (msg.t !== 'poll' && msg.t !== 'disconnect') send({ t: 'error', message: 'Conexão instável. Tente de novo.' });
+      // só reconecta depois de várias falhas seguidas
+      if (failures >= 6 && !closed) ws.close(1011, 'Reconectando');
+    }).finally(() => queued--);
     return queue;
   };
   ws.on('message', data => {
@@ -66,7 +89,9 @@ wss.on('connection', (ws) => {
     if (!msg || typeof msg !== 'object' || !['create','join','quick','resume','watch','ready','options','start','next','rematch','act','react','leave','ping'].includes(msg.t)) return;
     run(msg);
   });
-  const poll = async () => { if (closed) return; if (!queued) await run({ t: 'poll' }); if (!closed) timer = setTimeout(poll, 1000); };
+  // durante a rodada consulta a cada 1 s; no saguão/resultados, a cada 2,5 s (menos carga no banco)
+  const pollEvery = () => (phase === 'playing' || phase === 'countdown' ? 1000 : 2500) + (failures ? Math.min(4000, 1000 * failures) : 0);
+  const poll = async () => { if (closed) return; if (!queued) await run({ t: 'poll' }); if (!closed) timer = setTimeout(poll, pollEvery()); };
   timer = setTimeout(poll, 1000);
   ws.on('close', () => { closed = true; clearTimeout(timer); run({ t: 'disconnect' }); });
 });
