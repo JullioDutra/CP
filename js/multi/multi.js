@@ -15,6 +15,7 @@ import { createNet } from './net.js';
 import { createWsBoard } from './wsboard.js';
 import { createSudokuDuel } from './sudokuduel.js';
 import { createReveal } from './reveal.js';
+import { createTankReveal } from './tankreveal.js';
 
 const SESSION_KEY = 'trama.session';
 const DIFF = { facil: 'Fácil', medio: 'Médio', dificil: 'Difícil' };
@@ -753,7 +754,10 @@ function resultsView(s) {
 
   // 1º a animação; depois pódio, posição global, estatísticas e botões
   const teamRound = teamMode ? teamRoundFor(r, s) : null;
-  const reveal = createReveal({
+  // grade em grupo (sem times): animação dos tanques; demais modos: corrida de barras
+  const revealPlayers = teamMode ? [] : s.players.filter((p) => r.scores && p.id in r.scores);
+  const useTanks = r.type === 'grade' && !teamMode && revealPlayers.length >= 2;
+  const reveal = (useTanks ? createTankReveal : createReveal)({
     round: teamRound || r,
     players: teamMode ? ['A', 'B'].map((k) => ({ id: k, name: TEAMS[k].name, avatar: TEAMS[k].avatar })) : s.players.filter((p) => r.scores && p.id in r.scores),
     totals: teamMode ? { ...s.teams.totals } : Object.fromEntries(s.standings.map((x) => [x.id, x.total])),

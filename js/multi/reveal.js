@@ -123,7 +123,7 @@ export function createReveal({ round, players, totals, you, hueOf, final, onDone
       r.bar.style.width = `${Math.max(2, (state[p.id].score / max) * 100)}%`;
       r.pos.textContent = `${i + 1}º`;
       const ghost = !(p.id in (round.scores || {})); // linha de referência (recorde, 1º do dia)
-      r.words.textContent = countWords && !ghost ? `${state[p.id].words} ${state[p.id].words === 1 ? 'palavra' : 'palavras'}` : ghost ? 'referência' : '';
+      r.words.textContent = countWords && !ghost ? `${state[p.id].words} ${state[p.id].words === 1 ? 'palavra' : 'palavras'}` : ghost ? (p.tag || 'referência') : '';
       countUp(r.score, animateFrom?.[p.id] ?? state[p.id].score, state[p.id].score);
     });
   }
@@ -152,7 +152,7 @@ export function createReveal({ round, players, totals, you, hueOf, final, onDone
     const who = e.gains.map((g) => players.find((p) => p.id === g.id)).filter(Boolean);
     card.className = `reveal-card ${big ? 'big' : ''}`;
     card.replaceChildren(
-      h('div', { class: 'rc-word' }, e.playerLabel ? `${who[0]?.avatar} ${who[0]?.name}` : e.label),
+      fitWord(e.playerLabel ? `${who[0]?.avatar} ${who[0]?.name}` : e.label),
       h('div', { class: 'rc-meta' },
         h('span', { class: 'rc-pts' }, e.playerLabel ? e.label : `+${e.pts}`),
         e.playerLabel ? '' : h('span', { class: 'rc-who' }, who.map((p) => h('span', { class: 'rc-av', style: `--hue:${hueOf(p.id)}`, title: p.name }, p.avatar))),
@@ -194,7 +194,7 @@ export function createReveal({ round, players, totals, you, hueOf, final, onDone
     card.className = 'reveal-card done';
     const custom = finishText?.(leader, state);
     card.replaceChildren(
-      h('div', { class: 'rc-word' }, custom?.title ?? (leader ? `${leader.avatar} ${leader.name}` : 'Fim!')),
+      fitWord(custom?.title ?? (leader ? `${leader.avatar} ${leader.name}` : 'Fim!')),
       h('div', { class: 'rc-meta' }, h('span', { class: 'rc-pts' }, custom?.sub ?? (final ? 'venceu a partida!' : 'lidera a partida!'))));
     if (leader) rows[leader.id].el.classList.add('leader');
     skipBtn.remove();
@@ -207,4 +207,10 @@ export function createReveal({ round, players, totals, you, hueOf, final, onDone
   if (!events.length) setTimeout(() => finish(false), 600);
   else setTimeout(next, 700);
   return { el, skip: () => finish(true), destroy: () => { done = true; clearTimeout(timer); } };
+}
+
+// Texto grande do cartão que diminui conforme o tamanho (nomes longos cabem no celular).
+function fitWord(text) {
+  const n = [...String(text)].length;
+  return h('div', { class: `rc-word ${n > 16 ? 'xlong' : n > 10 ? 'long' : ''}` }, text);
 }

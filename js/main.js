@@ -240,8 +240,8 @@ async function showSoloReveal(m, opts, result) {
   const p = localProfile();
   const players = [{ id: 'me', name: p?.name || getPlayerName() || 'Você', avatar: p?.avatar || getAvatar() }];
   const totals = { me: result.score };
-  if (record) { players.push({ id: 'rec', name: 'Seu recorde', avatar: '👻' }); totals.rec = record; }
-  if (top && top.profileId !== p?.id) { players.push({ id: 'top', name: `1º de hoje: ${top.name}`, avatar: '🌍' }); totals.top = top.score; }
+  if (record) { players.push({ id: 'rec', name: p?.name || getPlayerName() || 'Você', tag: 'seu recorde', avatar: '👻' }); totals.rec = record; }
+  if (top && top.profileId !== p?.id) { players.push({ id: 'top', name: top.name, tag: '1º de hoje', avatar: top.avatar || '🌍' }); totals.top = top.score; }
   const hues = { me: 255, rec: 220, top: 40 };
 
   // salva no ranking deste aparelho automaticamente (com o nome do perfil)
