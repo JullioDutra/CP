@@ -2,6 +2,13 @@
 import { wordPoints } from './letters.js';
 
 export const AVATARS = ['🦊', '🐼', '🐸', '🐙', '🦉', '🐯', '🐨', '🦄', '🐢', '🐝', '🦁', '🐧', '🐳', '🦖', '🐶', '🐱', '🐵', '🦜', '🐞', '🐲'];
+// Avatares especiais, liberados por conquistas (chave da conquista em `unlock`).
+export const EXTRA_AVATARS = [
+  { a: '🦚', unlock: 'vitoria' }, { a: '🦩', unlock: 'palavra8' }, { a: '🦋', unlock: 'sequencia3' }, { a: '🐺', unlock: 'arena' },
+  { a: '🌵', unlock: 'maratona' }, { a: '⭐', unlock: 'pontos100' }, { a: '🐉', unlock: 'ouro' }, { a: '☄️', unlock: 'combo9' },
+  { a: '🎯', unlock: 'quente5' }, { a: '🌈', unlock: 'chuva3' },
+];
+export const ALL_AVATARS = [...AVATARS, ...EXTRA_AVATARS.map((x) => x.a)];
 
 // Cor de cada jogador (por ordem de entrada) — usada no caça-palavras e no telão.
 export const PLAYER_HUES = [8, 210, 140, 45, 280, 180, 330, 95, 25, 250, 160, 300];
@@ -176,6 +183,25 @@ export const MULTI_MODES = {
       size: { label: 'Grade', choices: [4, 5, 6], default: 5, format: 'grid' },
     },
   },
+  'grupo-surpresa': {
+    id: 'grupo-surpresa',
+    game: 'grade',
+    category: 'novo',
+    name: 'Modo Surpresa',
+    icon: '🎲',
+    short: 'Cada rodada sorteia um modo de grade',
+    playlist: ['grupo-classico', 'grupo-bonus', 'grupo-combo', 'grupo-letra', 'grupo-chuva'],
+    rules: [
+      'Cada rodada é um modo de grade diferente, sorteado na hora: Grade em Grupo, Grade Bônus, Grade Combo, Letra da Vez ou Chuva de Letras.',
+      'A roleta mostra o modo da próxima rodada durante a contagem.',
+      'Os pontos somam em todas as rodadas. Vence quem se adaptar melhor!',
+    ],
+    options: {
+      rounds: { ...ROUNDS, default: 4 },
+      seconds: { label: 'Tempo', choices: [60, 90, 120], default: 90, format: 'time' },
+      size: { label: 'Grade', choices: [4, 5, 6], default: 5, format: 'grid' },
+    },
+  },
   'arena-sobrevivencia': {
     id: 'arena-sobrevivencia',
     game: 'grade',
@@ -219,6 +245,14 @@ export const MULTI_MODES = {
 };
 
 export const DEFAULT_MODE = 'grupo-classico';
+
+// Modo da rodada: no Modo Surpresa, junta as regras do modo sorteado com o nome do Surpresa.
+export function effectiveMode(modeId, subMode) {
+  const base = MULTI_MODES[modeId];
+  if (!base?.playlist || !MULTI_MODES[subMode]) return base;
+  const sub = MULTI_MODES[subMode];
+  return { ...sub, id: base.id, name: base.name, icon: base.icon, short: base.short, category: base.category, options: base.options, playlist: base.playlist, sub: { id: sub.id, name: sub.name, short: sub.short } };
+}
 
 export function defaultOptions(modeId = DEFAULT_MODE) {
   const out = { mode: modeId };

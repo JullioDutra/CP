@@ -8,6 +8,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { START_RATING, eloDeltas, leagueOf, seasonOf } from '../js/core/leagues.js';
 import { ACHIEVEMENTS } from '../js/core/achievements.js';
+import { extraQueries } from './store-extra.js';
 
 const hash = (t) => createHash('sha256').update(String(t)).digest('hex');
 const newId = (n = 8) => randomBytes(n).toString('hex');
@@ -59,6 +60,9 @@ export function createStore(file = ':memory:', { now = Date.now } = {}) {
     );
     CREATE TABLE IF NOT EXISTS reports (
       id INTEGER PRIMARY KEY AUTOINCREMENT, reporter_id TEXT, reported_id TEXT, reported_name TEXT, room TEXT, reason TEXT, at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS metrics (
+      at INTEGER NOT NULL, kind TEXT NOT NULL, calls INTEGER NOT NULL, total_ms INTEGER NOT NULL, max_ms INTEGER NOT NULL, errors INTEGER NOT NULL, empty INTEGER NOT NULL DEFAULT 0
     );
   `);
 
@@ -117,6 +121,7 @@ export function createStore(file = ':memory:', { now = Date.now } = {}) {
   const favSql = db.prepare(`SELECT m.mode, COUNT(*) AS n FROM match_players mp JOIN matches m ON m.id = mp.match_id WHERE mp.profile_id = ? GROUP BY m.mode ORDER BY n DESC LIMIT 1`);
 
   return {
+    ...extraQueries(db, now),
     // ---------- perfis ----------
     createProfile({ name, avatar }) {
       const id = newId(6);

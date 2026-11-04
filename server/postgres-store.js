@@ -5,6 +5,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { START_RATING, eloDeltas, leagueOf, seasonOf } from '../js/core/leagues.js';
 import { ACHIEVEMENTS } from '../js/core/achievements.js';
+import { extraQueries } from './store-extra.js';
 
 const hash = (t) => createHash('sha256').update(String(t)).digest('hex');
 const newId = (n = 8) => randomBytes(n).toString('hex');
@@ -92,6 +93,7 @@ export function createPostgresStore(sql, { now = Date.now } = {}) {
   const favSql = db.prepare(`SELECT m.mode, COUNT(*) AS n FROM match_players mp JOIN matches m ON m.id = mp.match_id WHERE mp.profile_id = ? GROUP BY m.mode ORDER BY n DESC LIMIT 1`);
 
   return {
+    ...extraQueries(db, now),
     // ---------- perfis ----------
     async createProfile({ name, avatar }) {
       const id = newId(6);

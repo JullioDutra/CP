@@ -25,6 +25,15 @@ export async function ensureSchema(db) {
 
 // Colunas novas da tabela de salas (bancos criados antes delas).
 async function migrate(db) {
+  const [{ m }] = await db`SELECT to_regclass('trama.metrics') IS NOT NULL AS m`;
+  if (!m) {
+    await db.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(71903299)`;
+      await tx.unsafe(`CREATE TABLE IF NOT EXISTS trama.metrics (at BIGINT NOT NULL, kind TEXT NOT NULL, calls BIGINT NOT NULL, total_ms BIGINT NOT NULL, max_ms BIGINT NOT NULL, errors BIGINT NOT NULL, empty BIGINT NOT NULL DEFAULT 0);
+        CREATE INDEX IF NOT EXISTS metrics_at ON trama.metrics(at);
+        ALTER TABLE trama.metrics ENABLE ROW LEVEL SECURITY;`);
+    });
+  }
   const [{ n }] = await db`SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE table_schema = 'trama' AND table_name = 'rooms' AND column_name = 'player_ids'`;
   if (n) return;
   await db.begin(async (tx) => {

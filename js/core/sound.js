@@ -84,3 +84,37 @@ function svg(inner) {
   el.innerHTML = inner;
   return el;
 }
+
+// ---------- vibração (celular) ----------
+const VKEY = 'trama.vibrar';
+let vibrateOn = (() => { try { return localStorage.getItem(VKEY) !== '0'; } catch { return true; } })();
+export const vibrationEnabled = () => vibrateOn;
+export function setVibration(on) { vibrateOn = !!on; try { localStorage.setItem(VKEY, on ? '1' : '0'); } catch { /* ignore */ } }
+export function buzz(kind) {
+  if (!vibrateOn || typeof navigator === 'undefined' || !navigator.vibrate) return;
+  try { navigator.vibrate(kind === 'good' ? 25 : kind === 'big' ? [30, 40, 60] : [50, 40, 50]); } catch { /* ignore */ }
+}
+
+// Combo: a nota sobe a cada palavra seguida.
+export function comboNote(combo) {
+  if (muted) return;
+  try { tone(440 * Math.pow(2, Math.min(combo, 12) / 12), 0, 0.12, { type: 'triangle', vol: 0.1 }); } catch { /* ignore */ }
+}
+
+// Chuva fraquinha de fundo (Chuva de Letras). Devolve a função que para o som.
+export function rainAmbience() {
+  const a = !muted && ac();
+  if (!a) return () => {};
+  const buf = a.createBuffer(1, a.sampleRate * 2, a.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (Math.random() < 0.002 ? 1 : 0.25);
+  const src = a.createBufferSource();
+  src.buffer = buf; src.loop = true;
+  const filter = a.createBiquadFilter();
+  filter.type = 'bandpass'; filter.frequency.value = 2400; filter.Q.value = 0.6;
+  const gain = a.createGain();
+  gain.gain.value = 0.025;
+  src.connect(filter).connect(gain).connect(a.destination);
+  src.start();
+  return () => { try { gain.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.4); src.stop(a.currentTime + 0.45); } catch { /* ignore */ } };
+}

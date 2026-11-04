@@ -8,7 +8,7 @@
 import { randomBytes } from 'node:crypto';
 import { createRng } from '../js/core/rng.js';
 import { normalize } from '../js/core/dict.js';
-import { MULTI_MODES, AVATARS, DEFAULT_OPTIONS, sanitizeOptions, TEAMS, REACTIONS } from '../js/core/multimodes.js';
+import { MULTI_MODES, effectiveMode, AVATARS, ALL_AVATARS, DEFAULT_OPTIONS, sanitizeOptions, TEAMS, REACTIONS } from '../js/core/multimodes.js';
 import grade from './games/grade.js';
 import wordsearch from './games/wordsearch.js';
 import sudoku from './games/sudoku.js';
@@ -74,11 +74,21 @@ export class Room {
     this.lastActivity = now();
   }
 
-  get mode() { return MULTI_MODES[this.options.mode]; }
+  get mode() { return effectiveMode(this.options.mode, this.subMode); }
   get game() { return GAMES[this.mode.game]; }
 
   // ---------- jogadores ----------
   addPlayer({ name, avatar, profileId = null }) {
+    // Quem já está na sala (mesmo perfil, ou mesmo nome e desconectado) volta para o próprio
+    // lugar, com os pontos — em vez de entrar de novo como "Nome 2".
+    const back = [...this.players.values()].find((p) => (profileId && p.profileId === profileId) || (!p.connected && p.name.toLowerCase() === cleanName(name).toLowerCase()));
+    if (back) {
+      back.connected = true;
+      if (ALL_AVATARS.includes(avatar)) back.avatar = avatar;
+      if (!this.public && !this.players.get(this.hostId)?.connected) this.hostId = back.id;
+      this.touch();
+      return back;
+    }
     const max = this.public ? ARENA_MAX : MAX_PLAYERS;
     if (this.players.size >= max) throw new Error('Sala cheia');
     if (this.public && this.phase !== 'lobby') throw new Error('Essa partida já começou');
@@ -89,9 +99,9 @@ export class Room {
       id: randomBytes(6).toString('hex'),
       token: randomBytes(16).toString('hex'),
       name: clean,
-      avatar: AVATARS.includes(avatar) ? avatar : AVATARS[this.players.size % AVATARS.length],
+      avatar: ALL_AVATARS.includes(avatar) ? avatar : AVATARS[this.players.size % AVATARS.length],
       connected: true,
-      ready: false,
+      ready: !this.public, // quem entra (pelo link ou código) já chega pronto; pode desmarcar
       total: 0,
       rs: null, // estado do jogador na rodada
       acts: [],
@@ -250,7 +260,8 @@ export class Room {
     this.rd = null;
     this.finalResult = null;
     this.crownEvent = null;
-    for (const p of this.players.values()) Object.assign(p, { total: 0, ready: false, rs: null });
+    this.wants = [];
+    for (const p of this.players.values()) Object.assign(p, { total: 0, ready: true, rs: null });
     if (again) this.beginMatch();
     else this.touch();
   }
@@ -280,6 +291,37 @@ export class Room {
     }
   }
 
+  // "Quero revanche": no fim da partida qualquer um marca; o anfitrião vê quantos toparam.
+  wantRematch(id, on = true) {
+    if (this.phase !== 'final' || !this.players.has(id)) return;
+    const set = new Set(this.wants || []);
+    on ? set.add(id) : set.delete(id);
+    this.wants = [...set];
+    this.touch();
+  }
+
+  // Sala privada: nome (aparece no saguão e na prévia do link) e senha de 4 números.
+  setPrivacy(id, { name = '', pin = '' } = {}) {
+    this.assertHost(id);
+    this.title = cleanName(name || '').slice(0, 24) || null;
+    this.pin = /^\d{4}$/.test(String(pin)) ? String(pin) : null;
+    this.touch();
+  }
+  // Confere a senha de quem entra (quem já está na sala volta sem senha).
+  checkPin(pin, { name, profileId } = {}) {
+    if (!this.pin) return;
+    const returning = [...this.players.values()].some((p) => (profileId && p.profileId === profileId) || (!p.connected && p.name.toLowerCase() === cleanName(name || '').toLowerCase()));
+    if (!returning && String(pin || '') !== this.pin) throw new Error(pin ? 'Senha errada. Confira com quem criou a sala.' : 'Essa sala tem senha. Peça a senha a quem criou.');
+  }
+
+  // Passa o anfitrião para outra pessoa da sala.
+  setHost(id, target) {
+    this.assertHost(id);
+    if (!this.players.get(target)?.connected) throw new Error('Essa pessoa não está conectada');
+    this.hostId = target;
+    this.touch();
+  }
+
   assertHost(id) {
     if (this.public) throw new Error('Na Arena a partida começa sozinha');
     if (id !== this.hostId) throw new Error('Só o anfitrião pode fazer isso');
@@ -287,6 +329,10 @@ export class Room {
 
   // ---------- rodadas ----------
   countdown() {
+    // Modo Surpresa: sorteia o modo da próxima rodada (sem repetir o anterior)
+    const base = MULTI_MODES[this.options.mode];
+    if (base?.playlist) this.subMode = this.rng.pick(base.playlist.filter((m) => m !== this.subMode));
+    else this.subMode = null;
     this.phase = 'countdown';
     this.endsAt = this.now() + COUNTDOWN_MS;
     this.schedule(COUNTDOWN_MS, () => this.startRound());
@@ -398,7 +444,7 @@ export class Room {
     const teamTot = mode.teams ? this.teamTotals() : null;
     const players = standings.map((st) => {
       const p = this.players.get(st.id);
-      const { words = 0, unique = 0, longest = null } = this.agg?.[st.id] || {};
+      const { words = 0, unique = 0, longest = null, maxCombo = 0, hotWords = 0, rainWords = 0 } = this.agg?.[st.id] || {};
       let place = standings.findIndex((x) => x.total === st.total) + 1;
       if (teamTot) {
         // nos Times, a colocação é a do time
@@ -406,7 +452,7 @@ export class Room {
         const other = teamTot[this.teams[st.id] === 'A' ? 'B' : 'A'] ?? 0;
         place = mine > other ? 1 : mine === other ? 1 : 2;
       }
-      return { profileId: p.profileId, name: p.name, avatar: p.avatar, score: st.total, place, words, unique, longest };
+      return { profileId: p.profileId, name: p.name, avatar: p.avatar, score: st.total, place, words, unique, longest, maxCombo, hotWords, rainWords };
     });
     return { mode: this.options.mode, variant, kind: this.public ? 'arena' : 'multi', room: this.code, players };
   }
@@ -417,7 +463,9 @@ export class Room {
     this.agg ||= {};
     const last = this.rounds[this.rounds.length - 1];
     for (const [id, d] of Object.entries(last.players || {})) {
-      const a = (this.agg[id] ||= { words: 0, unique: 0, longest: null });
+      const a = (this.agg[id] ||= { words: 0, unique: 0, longest: null, maxCombo: 0, hotWords: 0, rainWords: 0 });
+      const ex = last.extrasOf?.[id];
+      if (ex) { a.maxCombo = Math.max(a.maxCombo || 0, ex.maxCombo || 0); a.hotWords = Math.max(a.hotWords || 0, ex.hotWords || 0); a.rainWords = Math.max(a.rainWords || 0, ex.rainWords || 0); }
       if (last.type === 'grade') {
         a.words += d.words.length;
         a.unique += d.unique;
@@ -471,6 +519,12 @@ export class Room {
       history: this.phase === 'final' ? this.rounds.map((r) => ({ round: r.round, scores: r.scores })) : undefined,
       standings: this.standings(),
       crownEvent: this.phase === 'final' ? this.crownEvent : undefined,
+      rematchWants: this.phase === 'final' ? this.wants || [] : undefined,
+      subMode: this.subMode || undefined,
+      title: this.title || undefined,
+      // a senha só aparece para o anfitrião (para mostrar/compartilhar)
+      locked: !!this.pin,
+      pin: this.pin && id === this.hostId ? this.pin : undefined,
     };
   }
 }

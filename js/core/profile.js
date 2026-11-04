@@ -29,13 +29,21 @@ export function serverStatus() {
   return statusPromise;
 }
 
-export async function api(path, { method = 'GET', body } = {}) {
+export async function api(path, { method = 'GET', body } = {}, retried = false) {
   const headers = { 'content-type': 'application/json' };
   const token = profileToken();
   if (token) headers['x-trama-perfil'] = token;
   const res = await fetch(`api/${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
   let data = null;
   try { data = await res.json(); } catch { /* sem corpo */ }
+  // O servidor não conhece mais o código guardado (ex.: banco novo): recria o perfil com o
+  // mesmo nome e avatar e tenta de novo, sem mostrar erro para o jogador.
+  if (!res.ok && token && !retried && (res.status === 401 || res.status === 404) && /perfil/i.test(data?.erro || '') && !/^solo\/fim/.test(path)) {
+    const old = read();
+    write(null);
+    const fresh = await ensureProfile({ name: old?.name || getPlayerName() || 'Jogador', avatar: old?.avatar || getAvatar() });
+    if (fresh) return api(path, { method, body }, true);
+  }
   if (!res.ok) throw Object.assign(new Error(data?.erro || `Erro ${res.status}`), { status: res.status, data });
   return data;
 }

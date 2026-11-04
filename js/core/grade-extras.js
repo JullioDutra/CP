@@ -3,7 +3,7 @@
 // (servidor no modo em grupo; tempo de partida no solo).
 import { h } from './ui.js';
 import { icon } from './icons.js';
-import { play } from './sound.js';
+import { play, comboNote, rainAmbience } from './sound.js';
 import { mascotSay } from './mascot.js';
 import { COMBO, comboMult, hotLetterAt } from './multimodes.js';
 
@@ -31,6 +31,7 @@ export function comboMeter(now = Date.now) {
     el,
     hit(combo) {
       set(combo, COMBO.windowMs);
+      comboNote(combo);
       el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
     },
     sync({ count: c, lastAt }) {
@@ -57,12 +58,13 @@ export function hotLetterUi(play, gridEl, now = Date.now) {
       current = cur.letter;
       letterEl.textContent = current.toUpperCase();
       el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap');
-      gridEl.querySelectorAll('.tile').forEach((t, i) => t.classList.toggle('hot', play.grid[i] === current));
+      gridEl.querySelectorAll('.tile').forEach((t, i) => t.classList.toggle('hot', play.grid[Number(t.dataset.i ?? i)] === current));
       if (current) mascotSay('hot', { letter: current.toUpperCase() });
     }
   };
   tick();
   const iv = setInterval(tick, 250);
+  gridEl.addEventListener('rendered', () => gridEl.querySelectorAll('.tile').forEach((t, i) => t.classList.toggle('hot', play.grid[Number(t.dataset.i ?? i)] === current)));
   return { el, destroy: () => clearInterval(iv) };
 }
 
@@ -78,6 +80,7 @@ export function rainChip(info, now = Date.now) {
   };
   tick();
   const iv = setInterval(tick, 250);
+  const stopRain = rainAmbience(); // chuvinha de fundo enquanto o modo durar
   return {
     el,
     sync(r) { nextAt = r.nextAt; tick(); },
@@ -85,6 +88,6 @@ export function rainChip(info, now = Date.now) {
       el.classList.remove('pour'); void el.offsetWidth; el.classList.add('pour');
       play('rain'); mascotSay('rain');
     },
-    destroy: () => clearInterval(iv),
+    destroy: () => { clearInterval(iv); stopRain(); },
   };
 }

@@ -340,6 +340,23 @@ const mkRoom = (clock, extra = {}) => new Room('ABCD', { now: clock.now, setTime
   assert.ok(room.rd.possible.length > solve(g0, 5).length, 'palavras possíveis de todas as versões da grade');
 }
 
+// ---------- Mesmo jogador entrando de novo não vira "Nome 2" ----------
+{
+  const clock = fakeClock();
+  const room = mkRoom(clock);
+  const ana = room.addPlayer({ name: 'Ana', profileId: 'perfil-ana' });
+  const beto = room.addPlayer({ name: 'Beto' });
+  ana.total = 30;
+  const again = room.addPlayer({ name: 'Ana', profileId: 'perfil-ana' });
+  assert.equal(again.id, ana.id, 'mesmo perfil volta para o mesmo lugar');
+  assert.equal(room.players.size, 2);
+  assert.equal(room.players.get(ana.id).total, 30, 'mantém os pontos');
+  room.disconnect(beto.id);
+  assert.equal(room.addPlayer({ name: 'beto' }).id, beto.id, 'sem perfil: mesmo nome desconectado volta');
+  const other = room.addPlayer({ name: 'Beto' });
+  assert.equal(other.name, 'Beto 2', 'outra pessoa com o mesmo nome (conectado) ganha número');
+}
+
 // ---------- Sudoku Duelo ----------
 {
   const clock = fakeClock();

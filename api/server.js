@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { WebSocketServer } from 'ws';
 import { publicPath } from '../server/static.js';
+import { sharePage } from '../server/share-page.js';
 import { localBackend } from '../server/local-backend.js';
 
 const ROOT = new URL('../', import.meta.url);
@@ -28,6 +29,15 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'https://trama.invalid');
     if (url.pathname === '/healthz') { res.end('ok'); return; }
+    // link da sala com prévia (WhatsApp, Telegram…): /s/ABCD → página com título/descrição e redireciona
+    const share = /^\/s\/([A-Za-z]{4})$/.exec(url.pathname);
+    if (share) {
+      const code = share[1].toUpperCase();
+      const info = await backend({ action: 'room', code }).catch(() => null);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(sharePage(code, info, `https://${req.headers.host}`));
+      return;
+    }
     if (url.pathname.startsWith('/api/')) {
       let body = '';
       for await (const chunk of req) { body += chunk; if (Buffer.byteLength(body) > 65536) { res.writeHead(413); res.end(); return; } }
@@ -49,6 +59,22 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({ erro: 'Serviço temporariamente indisponível. Tente novamente.' }));
   }
 });
+// ---------- métricas: cada instância soma por minuto e grava uma linha por tipo ----------
+const metrics = new Map(); // kind -> { calls, total_ms, max_ms, errors, empty }
+function metric(kind, ms, { error = false, empty = false } = {}) {
+  const m = metrics.get(kind) || { calls: 0, total_ms: 0, max_ms: 0, errors: 0, empty: 0 };
+  m.calls++; m.total_ms += Math.round(ms); m.max_ms = Math.max(m.max_ms, Math.round(ms));
+  if (error) m.errors++;
+  if (empty) m.empty++;
+  metrics.set(kind, m);
+}
+setInterval(() => {
+  if (!metrics.size) return;
+  const rows = [...metrics].map(([kind, m]) => ({ at: Date.now(), kind, ...m }));
+  metrics.clear();
+  backend({ action: 'metrics', rows }).catch(() => {});
+}, 60000).unref?.();
+
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Falhas passageiras do banco (conexões cheias, timeout): tenta de novo antes de desistir.
@@ -70,7 +96,10 @@ wss.on('connection', (ws) => {
     queued++;
     queue = queue.then(async () => {
       // jogadas e comandos tentam até 3 vezes; a consulta periódica, 1 vez (a próxima vem logo)
-      const messages = await backendRetry({ action: 'multi', session, msg }, msg.t === 'poll' ? 1 : 3);
+      const t0 = performance.now();
+      const messages = await backendRetry({ action: 'multi', session, msg }, msg.t === 'poll' ? 1 : 3)
+        .catch((e) => { metric(msg.t === 'poll' ? 'poll' : msg.t === 'act' ? 'act' : 'cmd', performance.now() - t0, { error: true }); throw e; });
+      metric(msg.t === 'poll' ? 'poll' : msg.t === 'act' ? 'act' : 'cmd', performance.now() - t0, { empty: !messages.length });
       failures = 0;
       for (const message of messages) {
         if (message.t === 'state') {
@@ -95,7 +124,7 @@ wss.on('connection', (ws) => {
   ws.on('message', data => {
     let msg;
     try { msg = JSON.parse(String(data)); } catch { return; }
-    if (!msg || typeof msg !== 'object' || !['create','join','quick','resume','watch','ready','options','start','next','rematch','act','react','leave','ping'].includes(msg.t)) return;
+    if (!msg || typeof msg !== 'object' || !['create','join','quick','resume','watch','ready','options','start','next','rematch','want','host','privacy','act','react','leave','ping'].includes(msg.t)) return;
     run(msg);
   });
   // durante a rodada consulta a cada 1 s; no saguão/resultados, a cada 2,5 s (menos carga no banco)
@@ -108,3 +137,5 @@ wss.on('connection', (ws) => {
   ws.on('close', () => { closed = true; clearTimeout(timer); clearTimeout(rotate); run({ t: 'disconnect' }); });
 });
 export default server;
+
+export { sharePage } from '../server/share-page.js';

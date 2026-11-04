@@ -171,6 +171,7 @@ export async function handleMulti(sql, store, { session, msg }, now = Date.now()
       }
       if (!room) throw new Error('Sala não encontrada. Confira o código.');
       const profile = await store.profileByToken(m.profile);
+      if (m.t === 'join') room.checkPin(m.pin, { name: m.name, profileId: profile?.id || null });
       attach(room.addPlayer({ name: m.name, avatar: m.avatar, profileId: profile?.id || null }));
     } else if (m.t === 'resume') {
       const candidate = await load(target);
@@ -206,6 +207,9 @@ export async function handleMulti(sql, store, { session, msg }, now = Date.now()
           case 'start': room.start(id); break;
           case 'next': room.next(id); break;
           case 'rematch': room.rematch(id, !!m.again); break;
+          case 'want': room.wantRematch(id, m.on !== false); break;
+          case 'host': room.setHost(id, String(m.id || '')); break;
+          case 'privacy': room.setPrivacy(id, { name: m.name, pin: m.pin }); break;
           case 'act': out.push({ t: 'res', rid: m.rid, result: await room.act(id, m) }); break;
           case 'react': {
             const reaction = room.react(id, m.emoji);

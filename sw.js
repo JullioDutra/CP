@@ -1,12 +1,12 @@
 // Service worker do Trama: guarda o jogo para abrir rápido e jogar os modos solo sem internet.
 // Partidas em grupo, ranking e IA continuam precisando do servidor (não são guardados).
-const VERSION = 'trama-v9';
+const VERSION = 'trama-v10';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'css/style.css',
   'js/main.js', 'js/core/ui.js', 'js/core/dict.js', 'js/core/letters.js', 'js/core/rng.js', 'js/core/wordgrid.js',
   'js/core/ranking.js', 'js/core/sound.js', 'js/core/sudoku.js', 'js/core/wordsearch.js', 'js/core/multimodes.js',
   'js/core/verify.js', 'js/core/profile.js', 'js/core/solo.js', 'js/core/online-solo.js', 'js/core/leagues.js',
-  'js/core/achievements.js', 'js/core/theme.js', 'js/core/achv-toast.js', 'js/core/icons.js', 'js/core/timealert.js', 'js/core/install.js', 'js/core/solo-verify.js', 'js/core/mascot.js', 'js/core/fx.js', 'js/core/rain.js', 'js/core/grade-extras.js', 'js/modes/novos/variantes.js', 'js/core/wordpath.js',
+  'js/core/achievements.js', 'js/core/theme.js', 'js/core/achv-toast.js', 'js/core/icons.js', 'js/core/timealert.js', 'js/core/install.js', 'js/core/solo-verify.js', 'js/core/mascot.js', 'js/core/fx.js', 'js/core/rain.js', 'js/core/grade-extras.js', 'js/modes/novos/variantes.js', 'js/core/wordpath.js', 'js/modes/novos/zen.js',
   'js/modes/shared-wordlist.js', 'js/modes/classicos/grade.js', 'js/modes/classicos/cacapalavras.js', 'js/modes/classicos/sudoku.js',
   'js/modes/novos/sobrevivencia.js', 'js/modes/novos/diario.js',
   'js/multi/multi.js', 'js/multi/net.js', 'js/multi/wsboard.js', 'js/multi/sudokuduel.js', 'js/multi/reveal.js', 'js/multi/tankreveal.js',

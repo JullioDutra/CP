@@ -14,6 +14,9 @@ export const ACHIEVEMENTS = [
   { key: 'sequencia7', icon: '🌋', name: 'Semana perfeita', desc: 'Jogue o Desafio do Dia 7 dias seguidos.', check: (c) => c.stats.streak >= 7 },
   { key: 'arena', icon: '🌐', name: 'Arena', desc: 'Jogue uma partida na Arena Pública.', check: (c) => c.stats.arena >= 1 },
   { key: 'ouro', icon: '🥇', name: 'Liga Ouro', desc: 'Chegue à liga Ouro numa temporada.', check: (c) => (c.rating?.peak || 0) >= 1200 },
+  { key: 'combo9', icon: '🔥', name: 'Combo máximo', desc: 'Chegue ao combo ×3 (9 palavras seguidas) na Grade Combo.', check: (c) => (c.match?.maxCombo || 0) >= 9 },
+  { key: 'quente5', icon: '🎯', name: 'Mão quente', desc: 'Ache 5 palavras com a letra quente numa partida de Letra da Vez.', check: (c) => (c.match?.hotWords || 0) >= 5 },
+  { key: 'chuva3', icon: '🌧️', name: 'Dançando na chuva', desc: 'Use letras que acabaram de cair em 3 palavras numa Chuva de Letras.', check: (c) => (c.match?.rainWords || 0) >= 3 },
 ];
 
 // Temas visuais: liberados por conquistas.

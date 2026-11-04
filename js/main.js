@@ -14,7 +14,8 @@ import sudoku from './modes/classicos/sudoku.js';
 import sobrevivencia from './modes/novos/sobrevivencia.js';
 import diario from './modes/novos/diario.js';
 import { comboSolo, letraSolo, chuvaSolo } from './modes/novos/variantes.js';
-import { initMulti, openMulti, openTv, openArena, roomCodeFromUrl, tvFromUrl, multiRankingModes } from './multi/multi.js';
+import zen from './modes/novos/zen.js';
+import { initMulti, openMulti, openTv, openArena, roomCodeFromUrl, tvFromUrl, multiRankingModes, lastRoom, resumeLastRoom } from './multi/multi.js';
 import { applyTheme } from './core/theme.js';
 import { achievementByKey } from './core/achievements.js';
 import { markSeenAchievements } from './core/achv-toast.js';
@@ -27,7 +28,7 @@ import { todayKey } from './core/rng.js';
 import { finishOnline } from './core/online-solo.js';
 
 const CLASSICOS = [grade, cacapalavras, sudoku];
-const NOVOS = [sobrevivencia, diario, comboSolo, letraSolo, chuvaSolo];
+const NOVOS = [sobrevivencia, diario, comboSolo, letraSolo, chuvaSolo, zen];
 
 const app = document.getElementById('app');
 let cleanup = null;
@@ -54,8 +55,51 @@ function modeCard(m) {
     { class: `mode-card ${m.category}`, onclick: () => showIntro(m) },
     h('span', { class: 'mode-icon' }, modeIcon(m.id)),
     h('span', { class: 'mode-text' }, h('strong', {}, m.name), h('small', {}, m.tagline)),
-    best ? h('span', { class: 'mode-best' }, icon('star', 'tiny'), best) : ''
+    h('span', { class: 'mode-best', 'data-mode': m.id, hidden: best ? null : true }, icon('star', 'tiny'), best)
   );
+}
+
+// Recorde global (perfil) em cada cartão, quando o servidor responde; senão fica o do aparelho.
+function fillGlobalBests() {
+  if (!localProfile()?.token) return;
+  api('recordes').then(({ recordes }) => {
+    for (const el of document.querySelectorAll('.mode-best[data-mode]')) {
+      const best = Math.max(0, ...recordes.filter((r) => r.mode === el.dataset.mode).map((r) => r.best));
+      const local = Number(el.textContent) || 0;
+      if (best > local) { el.lastChild.textContent = String(best); el.hidden = false; el.title = 'Seu recorde no ranking global'; }
+    }
+  }).catch(() => {});
+}
+
+// "Continuar", Desafio do Dia e "Jogar de novo" — atalhos no topo do início.
+function quickRow() {
+  const items = [];
+  const room = lastRoom();
+  if (room) {
+    items.push(h('button', { class: 'quick continue', onclick: () => resumeLastRoom() },
+      h('span', { class: 'q-icon' }, icon('enter')), h('span', {}, h('strong', {}, `Voltar para a sala ${room.code}`), h('small', {}, 'Você estava jogando com amigos'))));
+  }
+  const daily = NOVOS.find((m) => m.id === 'novo-diario');
+  let played = null;
+  try { const v = JSON.parse(localStorage.getItem('trama.daily.played')); played = v?.day === todayKey() ? v : null; } catch { /* ignore */ }
+  const left = h('small', {}, '');
+  const tick = () => {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const m = Math.max(0, Math.floor((next - now) / 60000));
+    left.textContent = played ? `Feito hoje: ${played.score ?? '—'} pts · novo em ${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `Ainda não jogou hoje · termina em ${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
+  };
+  tick();
+  const streak = h('span', { class: 'q-streak', hidden: true });
+  if (localProfile()?.token) api('perfil').then(({ stats }) => { if (stats.streak) { streak.replaceChildren(icon('flame', 'tiny'), String(stats.streak)); streak.hidden = false; streak.title = 'Dias seguidos'; } }).catch(() => {});
+  items.push(h('button', { class: `quick daily ${played ? 'done' : ''}`, onclick: () => showIntro(daily) },
+    h('span', { class: 'q-icon' }, icon('calendar')), h('span', {}, h('strong', {}, 'Desafio do Dia ', streak), left)));
+  let last = null;
+  try { last = JSON.parse(localStorage.getItem('trama.lastMode')); } catch { /* ignore */ }
+  const lm = last && [...CLASSICOS, ...NOVOS].find((m) => m.id === last.id && m.id !== 'novo-diario');
+  if (lm) items.push(h('button', { class: 'quick again', onclick: () => play(lm, last.opts || {}) },
+    h('span', { class: 'q-icon' }, modeIcon(lm.id)), h('span', {}, h('strong', {}, 'Jogar de novo'), h('small', {}, lm.name))));
+  return h('section', { class: 'quick-row' }, items);
 }
 
 function bestLabel(m) {
@@ -100,6 +144,7 @@ function showMenu() {
         h('div', { class: 'hero-links' },
           h('button', { class: 'link-btn', onclick: () => openArena() }, icon('zap'), h('span', {}, 'Arena Pública', arenaStatusEl())),
           h('button', { class: 'link-btn', onclick: () => { history.replaceState(null, '', '?tela=1'); openTv(); } }, icon('tv'), 'Modo Telão')))),
+    quickRow(),
     h('section', { class: 'home-section' },
       h('div', { class: 'section-head' }, h('h2', {}, 'Jogar sozinho'), h('p', { class: 'section-sub' }, 'Treine, bata seu recorde e entre no ranking.')),
       h('p', { class: 'group-label' }, 'Clássicos'),
@@ -115,6 +160,8 @@ function showMenu() {
       installButton('link-btn'),
       mascotToggle('link-btn'))
   );
+  fillGlobalBests();
+  maybeTour();
 }
 
 function profileChip() {
@@ -171,6 +218,7 @@ function showIntro(m) {
         'div',
         { class: 'row-actions center' },
         h('button', { class: 'btn big', onclick: () => play(m, opts) }, icon('play'), 'Jogar'),
+        m.practice ? h('button', { class: 'btn ghost', title: 'Sem relógio e sem ranking, para aprender o modo', onclick: () => play(m, { ...opts, practice: true }) }, icon('clock'), 'Treino sem tempo') : '',
         h('button', { class: 'btn ghost', onclick: () => showRanking(m) }, 'Ver ranking')
       )
     )
@@ -184,6 +232,7 @@ function topBar(m) {
 // ---------- Partida ----------
 function play(m, baseOpts = {}) {
   const opts = { ...baseOpts };
+  try { localStorage.setItem('trama.lastMode', JSON.stringify({ id: m.id, opts: Object.fromEntries(Object.entries(baseOpts).filter(([k]) => k !== 'online')) })); } catch { /* ignore */ }
   const root = h('div', { class: `game ${m.id}` });
   screen(topBar(m), root);
   let finished = false;
@@ -198,7 +247,7 @@ function play(m, baseOpts = {}) {
   root.append(h('p', { class: 'loading' }, 'Preparando…'));
   (async () => {
     // modos com ranking global pedem a grade ao servidor (se ele não responder, joga local)
-    if (m.prepare) opts.online = await Promise.race([m.prepare(opts), new Promise((r) => setTimeout(() => r(null), 5000))]);
+    if (m.prepare && !opts.practice) opts.online = await Promise.race([m.prepare(opts), new Promise((r) => setTimeout(() => r(null), 5000))]);
     await new Promise((r) => setTimeout(r, 30));
     if (!root.isConnected) return;
     root.replaceChildren();
@@ -438,3 +487,29 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     );
   }
 })();
+
+// Primeira visita: 3 telas rápidas com o Fio explicando o jogo.
+function maybeTour() {
+  try { if (localStorage.getItem('trama.tour') === '1') return; } catch { return; }
+  const steps = [
+    { icon: 'grid', title: 'Ligue letras vizinhas', text: 'Arraste o dedo pelas peças (também na diagonal) para formar palavras de 3 letras ou mais. Dá para tocar peça por peça ou digitar.' },
+    { icon: 'star', title: 'Palavra grande vale muito', text: `Os pontos crescem rápido com o tamanho: ${POINTS_HINT}. Uma palavra de 8 letras vale 16 de 3!` },
+    { icon: 'users', title: 'Jogue com os amigos', text: 'Crie uma sala, mande o link no grupo e todo mundo joga ao mesmo tempo, cada um no seu celular. Tem TV? Abra o Telão.' },
+  ];
+  let k = 0;
+  const done = () => { try { localStorage.setItem('trama.tour', '1'); } catch { /* ignore */ } sheet.remove(); };
+  const body = h('div', { class: 'tour-body' });
+  const dots = h('div', { class: 'tour-dots' }, steps.map(() => h('span')));
+  const next = h('button', { class: 'btn', onclick: () => (k < steps.length - 1 ? (k++, draw()) : done()) });
+  const draw = () => {
+    const s = steps[k];
+    body.replaceChildren(h('span', { class: 'tour-icon' }, icon(s.icon)), h('h3', {}, s.title), h('p', {}, s.text));
+    [...dots.children].forEach((d, i) => d.classList.toggle('on', i === k));
+    next.textContent = k < steps.length - 1 ? 'Próximo' : 'Bora jogar!';
+    mascotSay(k === steps.length - 1 ? 'start' : 'word');
+  };
+  const sheet = h('div', { class: 'sheet-backdrop tour', role: 'dialog', 'aria-label': 'Como jogar o Trama' },
+    h('div', { class: 'sheet' }, body, dots, h('div', { class: 'row-actions' }, h('button', { class: 'link-btn', onclick: done }, 'Pular'), next)));
+  document.body.append(sheet);
+  draw();
+}

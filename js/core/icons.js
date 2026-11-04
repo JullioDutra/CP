@@ -72,7 +72,7 @@ const MODE_GLYPH = {
   'grupo-classico': 'grid', 'corrida-cacapalavras': 'search', 'sudoku-duelo': 'sudoku',
   'grupo-bonus': 'gem', 'arena-sobrevivencia': 'hourglass', 'times': 'swords',
   'grupo-combo': 'flame', 'grupo-letra': 'target', 'grupo-chuva': 'rain',
-  'novo-combo': 'flame', 'novo-letra': 'target', 'novo-chuva': 'rain',
+  'novo-combo': 'flame', 'novo-letra': 'target', 'novo-chuva': 'rain', 'novo-zen': 'sparkle',
 };
 export const modeIcon = (id, cls = '') => icon(MODE_GLYPH[id] || 'grid', cls);
 
@@ -80,6 +80,6 @@ export const modeIcon = (id, cls = '') => icon(MODE_GLYPH[id] || 'grid', cls);
 const ACH_GLYPH = {
   primeira: 'flag', vitoria: 'trophy', vitorias10: 'crown', palavra8: 'ruler', palavra10: 'ruler',
   unicas10: 'target', pontos100: 'star', maratona: 'clock', sequencia3: 'flame', sequencia7: 'flame',
-  arena: 'globe', ouro: 'medal',
+  arena: 'globe', ouro: 'medal', combo9: 'flame', quente5: 'target', chuva3: 'rain',
 };
 export const achievementIcon = (key, cls = '') => icon(ACH_GLYPH[key] || 'star', cls);

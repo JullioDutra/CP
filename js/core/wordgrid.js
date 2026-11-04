@@ -1,7 +1,7 @@
 // Componente de grade de letras: arrastar, tocar peça por peça ou digitar no teclado.
 import { h } from './ui.js';
 import { isAdjacent, findPath } from './letters.js';
-import { play } from './sound.js';
+import { play, buzz } from './sound.js';
 import { mascotSay } from './mascot.js';
 import { floatPoints } from './fx.js';
 
@@ -14,12 +14,23 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
 
   const current = h('div', { class: 'current-word' }, ' ');
   const board = h('div', { class: 'board fill', style: `--n:${size}` });
-  const tiles = [];
+  const tiles = []; // por índice ORIGINAL da grade (o servidor só conhece esse)
+  let rot = 0; // quantas vezes a grade foi girada 90° (só muda o desenho)
+  const marks = {}; // classes que sobrevivem a redesenhos (ex.: letras da chuva)
+
+  // posição na tela → índice original (girar não muda quem é vizinho de quem)
+  const toOrig = (d) => {
+    let r = Math.floor(d / size), c = d % size;
+    for (let k = 0; k < rot; k++) [r, c] = [size - 1 - c, r];
+    return r * size + c;
+  };
 
   function renderTiles() {
     board.replaceChildren();
     tiles.length = 0;
-    grid.forEach((l, i) => {
+    for (let d = 0; d < size * size; d++) {
+      const i = toOrig(d);
+      const l = grid[i];
       const t = h(
         'button',
         { class: 'tile', 'data-i': i, type: 'button', 'aria-label': l.toUpperCase() },
@@ -27,11 +38,13 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
         bonus[i] ? h('em', { class: 'bonus' }, bonus[i]) : null
       );
       if (bonus[i]) t.classList.add('has-bonus');
-      tiles.push(t);
+      tiles[i] = t;
       board.append(t);
-    });
+    }
     board.append(trace);
+    for (const [cls, cells] of Object.entries(marks)) cells.forEach((i) => tiles[i]?.classList.add(cls));
     paint();
+    board.dispatchEvent(new CustomEvent('rendered', { bubbles: true })); // quem marca peças (letra quente) remarca
   }
 
   const word = () => path.map((i) => grid[i]).join('');
@@ -73,8 +86,16 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
     typed = '';
     paint();
     if (w.length === 0) return;
+    // jogada otimista: as peças já acendem enquanto o servidor confere
+    p.forEach((i) => tiles[i]?.classList.add('pending'));
+    current.textContent = w.toUpperCase();
+    current.classList.add('checking');
     // onSubmit pode responder na hora ou devolver uma Promise (multijogador)
     Promise.resolve(onSubmit(w, p)).then((res) => {
+      p.forEach((i) => tiles[i]?.classList.remove('pending'));
+      current.classList.remove('checking');
+      if (!path.length && !typed) current.textContent = ' ';
+      buzz(res?.ok ? (w.length >= 6 ? 'big' : 'good') : 'bad');
       flash(p, res?.ok ? 'good' : res?.dup ? 'dup' : 'bad');
       play(res?.ok ? (w.length >= 6 ? 'big' : 'good') : res?.dup ? 'dup' : 'bad');
       if (res?.ok && res.pts) floatPoints(tiles[p[p.length - 1]], `+${res.pts}`, res.mult > 1 || w.length >= 7 ? 'big' : 'good');
@@ -87,15 +108,16 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
   // Vizinha reta (horizontal/vertical) aceita quase a peça toda; diagonal exige chegar
   // mais perto do centro, para não pegar a peça do lado sem querer.
   function tileAt(x, y) {
-    const a = tiles[0]?.getBoundingClientRect(), b = tiles[tiles.length - 1]?.getBoundingClientRect();
+    const shown = board.querySelectorAll('.tile');
+    const a = shown[0]?.getBoundingClientRect(), b = shown[shown.length - 1]?.getBoundingClientRect();
     if (!a || !b) return null;
     const cw = (b.right - a.left) / size, ch = (b.bottom - a.top) / size;
     const fx = (x - a.left) / cw, fy = (y - a.top) / ch;
     const c = Math.floor(fx), r = Math.floor(fy);
     if (c < 0 || r < 0 || c >= size || r >= size) return null;
-    const i = r * size + c;
+    const i = toOrig(r * size + c);
     const last = path[path.length - 1];
-    const diag = last != null && Math.floor(last / size) !== r && last % size !== c;
+    const diag = last != null && Math.floor(last / size) !== Math.floor(i / size) && last % size !== i % size;
     const limit = last == null ? 0.5 : diag ? 0.4 : 0.52;
     return Math.hypot(fx - c - 0.5, fy - r - 0.5) <= limit ? i : null;
   }
@@ -185,6 +207,13 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
     'div',
     { class: 'grid-actions' },
     h('button', { class: 'btn ghost', type: 'button', onclick: () => { path = []; typed = ''; paint(); } }, 'Limpar'),
+    // girar a grade: mesmas letras, outro ângulo (ajuda a enxergar palavras novas)
+    h('button', { class: 'btn ghost icon-btn rotate-btn', type: 'button', title: 'Girar a grade', 'aria-label': 'Girar a grade', onclick: () => {
+      rot = (rot + 1) % 4; path = []; typed = '';
+      renderTiles();
+      board.classList.remove('turned'); void board.offsetWidth; board.classList.add('turned');
+      play('tick');
+    } }, rotateIcon()),
     h('button', { class: 'btn', type: 'button', onclick: submit }, 'Enviar')
   );
 
@@ -201,11 +230,20 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
     },
     setBonus(b) { bonus = b; renderTiles(); },
     // marca peças com uma classe (ex.: letras que acabaram de cair na Chuva de Letras)
-    mark(cells, cls) { tiles.forEach((t, i) => t.classList.toggle(cls, cells.includes(i))); },
+    mark(cells, cls) { marks[cls] = cells.slice(); tiles.forEach((t, i) => t.classList.toggle(cls, cells.includes(i))); },
     disable() {
       document.removeEventListener('keydown', onKey);
       board.classList.add('disabled');
     },
     destroy() { document.removeEventListener('keydown', onKey); },
   };
+}
+
+function rotateIcon() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'ico');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = '<path d="M21 12a9 9 0 1 1-3-6.7L21 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 3v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+  return svg;
 }

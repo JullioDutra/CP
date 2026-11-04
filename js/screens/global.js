@@ -2,7 +2,8 @@
 import { h, toast } from '../core/ui.js';
 import { icon, modeIcon as modeGlyph, achievementIcon } from '../core/icons.js';
 import { mascotToggle } from '../core/mascot.js';
-import { MULTI_MODES, AVATARS, formatOption } from '../core/multimodes.js';
+import { MULTI_MODES, AVATARS, EXTRA_AVATARS, formatOption } from '../core/multimodes.js';
+import { vibrationEnabled, setVibration } from '../core/sound.js';
 import { SOLO_RANKED } from '../core/solo.js';
 import { todayKey } from '../core/rng.js';
 import { getPlayerName } from '../core/ranking.js';
@@ -73,6 +74,7 @@ export async function showRanking(ctx, { mode = null, tab = null } = {}) {
   function renderTabs() {
     tabsEl.replaceChildren(
       h('button', { class: `seg-btn ${state.tab === 'global' ? 'on' : ''}`, onclick: () => { state.tab = 'global'; render(); } }, 'Global'),
+      h('button', { class: `seg-btn ${state.tab === 'amigos' ? 'on' : ''}`, onclick: () => { state.tab = 'amigos'; render(); } }, 'Amigos'),
       h('button', { class: `seg-btn ${state.tab === 'ligas' ? 'on' : ''}`, onclick: () => { state.tab = 'ligas'; render(); } }, 'Ligas'),
       h('button', { class: `seg-btn ${state.tab === 'local' ? 'on' : ''}`, onclick: () => { state.tab = 'local'; render(); } }, 'Neste aparelho'));
   }
@@ -81,6 +83,7 @@ export async function showRanking(ctx, { mode = null, tab = null } = {}) {
     renderTabs();
     if (state.tab === 'local') { ctx.renderLocal(content); return; }
     if (state.tab === 'ligas') { renderLeagues(content, online, meId); return; }
+    if (state.tab === 'amigos') { renderFriends(content, online); return; }
     if (!online) {
       content.replaceChildren(h('p', { class: 'notice' }, 'O ranking global precisa do servidor do Trama (npm start). Por enquanto, veja o ranking deste aparelho.'));
       return;
@@ -139,6 +142,16 @@ export async function showProfile(ctx) {
   const saveBtn = h('button', { class: 'btn', disabled: true, onclick: save }, icon('check'), 'Salvar');
   const dirty = () => (saveBtn.disabled = !nameInput.value.trim() || (nameInput.value.trim() === (localProfile()?.name || getPlayerName()) && avatar === (localProfile()?.avatar || getAvatar())));
   nameInput.addEventListener('input', dirty);
+  // avatares especiais começam trancados; liberam quando o perfil carrega as conquistas
+  const extraPicks = EXTRA_AVATARS.map((x) => h('button', { type: 'button', class: `avatar-pick special locked ${x.a === avatar ? 'on' : ''}`, disabled: true, 'data-unlock': x.unlock,
+    title: `Libere com a conquista "${achievementByKey[x.unlock]?.name || x.unlock}"`, 'aria-label': `Avatar especial ${x.a}`, onclick: (e) => pickAvatar(x.a, e.currentTarget) }, x.a));
+  const pickAvatar = (a, btn) => {
+    avatar = a;
+    bigAvatar.firstChild.textContent = a;
+    [...avatars, ...extraPicks].forEach((b) => b.classList.remove('on'));
+    btn.classList.add('on');
+    dirty();
+  };
   const avatars = AVATARS.map((a) => h('button', { type: 'button', class: `avatar-pick ${a === avatar ? 'on' : ''}`, 'aria-label': `Avatar ${a}`, onclick: (e) => {
     avatar = a;
     bigAvatar.firstChild.textContent = a;
@@ -146,7 +159,7 @@ export async function showProfile(ctx) {
     e.currentTarget.classList.add('on');
     dirty();
   } }, a));
-  const grid = h('div', { class: 'avatar-grid hidden' }, avatars);
+  const grid = h('div', { class: 'avatar-grid hidden' }, avatars, h('p', { class: 'group-label avatar-special-label' }, 'Especiais (conquistas)'), extraPicks);
   const meta = h('div', { class: 'profile-meta' });
   async function save() {
     const name = nameInput.value.trim();
@@ -177,6 +190,9 @@ export async function showProfile(ctx) {
     if (!p) { body.replaceChildren(identity, h('p', { class: 'notice' }, 'Não foi possível falar com o servidor.')); return; }
     const { stats } = await api('perfil');
     const league = leagueOf(stats.rating.rating);
+    const have = new Set((stats.achievements || []).map((a) => a.key));
+    for (const b of extraPicks) if (have.has(b.dataset.unlock)) { b.disabled = false; b.classList.remove('locked'); b.title = 'Avatar especial liberado'; }
+    api('ligas').then((l) => { if (l.rows.slice(0, 10).some((x) => x.profileId === p.id)) { bigAvatar.classList.add('framed'); bigAvatar.title = 'Top 10 da liga nesta temporada'; } }).catch(() => {});
     meta.replaceChildren(
       h('span', { class: 'muted' }, `${stats.matches} ${stats.matches === 1 ? 'partida' : 'partidas'}`),
       h('span', { class: `league-tag ${league.key}` }, `Liga ${league.name} · ${stats.rating.rating}`),
@@ -207,7 +223,12 @@ export async function showProfile(ctx) {
               h('strong', {}, `${r.score} pts`),
               h('small', { class: 'muted' }, fmtDate(r.at)))))
           : h('p', { class: 'empty' }, 'Jogue uma partida em grupo ou um modo solo com ranking para ver seu histórico aqui.')),
+      evolutionCard(),
       themesCard(stats.achievements),
+      h('section', { class: 'card' },
+        h('h3', {}, 'Vibração'),
+        h('p', { class: 'hint' }, 'O celular vibra de leve ao acertar e ao errar uma palavra.'),
+        (() => { const b = h('button', { class: 'btn ghost', type: 'button', onclick: () => { setVibration(!vibrationEnabled()); paintV(); navigator.vibrate?.(30); } }); const paintV = () => { b.textContent = vibrationEnabled() ? 'Vibração ligada' : 'Vibração desligada'; b.setAttribute('aria-pressed', String(vibrationEnabled())); }; paintV(); return b; })()),
       h('section', { class: 'card mascot-card' },
         h('h3', {}, 'Fio, o novelo ajudante'),
         h('p', { class: 'hint' }, 'Ele aparece no canto da tela comentando as jogadas: palavras grandes, combos, a letra quente e os últimos segundos.'),
@@ -226,7 +247,8 @@ export async function showProfile(ctx) {
             toast(body, 'Perfil carregado', 'good');
             showProfile(ctx);
           } catch (err) { toast(body, err.message, 'bad'); }
-        } }, importInput, h('button', { class: 'btn', type: 'submit' }, 'Usar código'))));
+        } }, importInput, h('button', { class: 'btn', type: 'submit' }, 'Usar código'))),
+      h('p', { class: 'center' }, h('button', { class: 'link-btn small', onclick: () => showHealth(ctx) }, icon('chart', 'tiny'), 'Saúde do servidor')));
   }
   load().catch((e) => body.replaceChildren(identity, h('p', { class: 'notice' }, e.message)));
 }
@@ -239,14 +261,46 @@ function variantLabel(mode, v) {
 }
 
 // Ligas da temporada (mês): nível de cada pessoa nas partidas da Arena Pública.
-async function renderLeagues(content, online, meId) {
+// Amigos: quem jogou com você em salas nos últimos 60 dias, com o placar da semana.
+async function renderFriends(content, online) {
+  if (!online) { content.replaceChildren(h('p', { class: 'notice' }, 'O ranking entre amigos precisa do servidor do Trama.')); return; }
+  content.replaceChildren(h('p', { class: 'loading' }, 'Carregando…'));
+  try {
+    await ensureProfile();
+    const r = await api('amigos');
+    const me = localProfile();
+    const rows = [...r.rows, { profileId: me?.id, name: me?.name || 'Você', avatar: me?.avatar || '🙂', week: r.voce.week, wins: r.voce.wins, games: r.voce.games, me: true }]
+      .sort((a, b) => b.week - a.week || b.wins - a.wins);
+    content.replaceChildren(
+      h('h3', {}, 'Placar da semana entre amigos'),
+      h('p', { class: 'hint' }, 'Amigos são as pessoas que jogaram em sala com você nos últimos 60 dias. Conta os pontos das partidas que vocês jogaram juntos nesta semana.'),
+      r.rows.length
+        ? h('table', { class: 'ranking global' },
+            h('thead', {}, h('tr', {}, h('th', {}, '#'), h('th', {}, 'Jogador'), h('th', {}, 'Semana'), h('th', {}, 'Vitórias'), h('th', {}, 'Juntos'))),
+            h('tbody', {}, rows.map((x, i) => h('tr', { class: x.me ? 'me' : '' },
+              h('td', { class: 'pos' }, posBadge(i + 1)),
+              h('td', {}, h('span', { class: 'rank-avatar' }, x.avatar), ' ', x.name, x.me ? h('small', { class: 'muted' }, ' (você)') : ''),
+              h('td', { class: 'num' }, x.week), h('td', { class: 'num' }, x.wins), h('td', { class: 'num' }, x.me ? '—' : x.games)))))
+        : h('p', { class: 'empty' }, 'Jogue uma partida numa sala com amigos para eles aparecerem aqui.'));
+  } catch (e) {
+    content.replaceChildren(h('p', { class: 'notice' }, e.message));
+  }
+}
+
+async function renderLeagues(content, online, meId, season = null) {
   if (!online) { content.replaceChildren(h('p', { class: 'notice' }, 'As ligas precisam do servidor do Trama (npm start).')); return; }
   content.replaceChildren(h('p', { class: 'loading' }, 'Carregando…'));
   try {
-    const r = await api('ligas');
+    const r = await api(season ? `ligas?temporada=${season}` : 'ligas');
+    // temporadas: esta e as 5 anteriores
+    const [yy, mm] = r.temporada.split('-').map(Number);
+    const now = new Date();
+    const seasons = Array.from({ length: 6 }, (_, k) => { const d = new Date(now.getFullYear(), now.getMonth() - k, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+    const picker = h('select', { id: 'liga-temporada', 'aria-label': 'Temporada', onchange: (e) => renderLeagues(content, online, meId, e.target.value) },
+      seasons.map((s) => h('option', { value: s, selected: s === `${yy}-${String(mm).padStart(2, '0')}` ? true : null }, seasonLabel(s))));
     const ladder = h('div', { class: 'ladder' }, LEAGUES.map((l) => h('div', { class: `ladder-step ${r.voce && r.voce.league === l.key ? 'me' : ''}` }, h('span', { class: `league-dot ${l.key}` }), h('strong', {}, l.name), h('small', {}, `${l.min}+`))));
     content.replaceChildren(
-      h('h3', {}, `Temporada de ${seasonLabel(r.temporada)}`),
+      h('div', { class: 'season-head' }, h('h3', {}, `Temporada de ${seasonLabel(r.temporada)}`), picker),
       h('p', { class: 'hint' }, 'Todo mundo começa em 1000 (Bronze). O nível só muda nas partidas da ⚡ Arena Pública: ganhar de quem tem nível maior vale mais. Zera a cada mês.'),
       ladder,
       r.voce ? h('p', { class: 'you-pos' }, `Você: nível ${r.voce.rating} · ${leagueOf(r.voce.rating).name} · ${r.voce.games} partida(s) na Arena`) : '',
@@ -255,7 +309,7 @@ async function renderLeagues(content, online, meId) {
             h('thead', {}, h('tr', {}, h('th', {}, '#'), h('th', {}, 'Jogador'), h('th', {}, 'Nível'), h('th', {}, 'Liga'))),
             h('tbody', {}, r.rows.map((x) => h('tr', { class: x.profileId === meId ? 'me' : '' },
               h('td', { class: 'pos' }, posBadge(x.pos)),
-              h('td', {}, h('span', { class: 'rank-avatar' }, x.avatar), ' ', x.name, x.profileId === meId ? h('small', { class: 'muted' }, ' (você)') : ''),
+              h('td', {}, h('span', { class: `rank-avatar ${x.pos <= 10 ? 'framed' : ''}`, title: x.pos <= 10 ? 'Top 10 da temporada' : null }, x.avatar), ' ', x.name, x.profileId === meId ? h('small', { class: 'muted' }, ' (você)') : ''),
               h('td', { class: 'num' }, x.rating),
               h('td', {}, h('span', { class: `league-tag ${leagueOf(x.rating).key}` }, leagueOf(x.rating).name))))))
         : h('p', { class: 'empty' }, 'Ninguém jogou na Arena nesta temporada ainda. Seja o primeiro!'));
@@ -296,4 +350,49 @@ function themesCard(list = []) {
   }));
   draw();
   return h('section', { class: 'card' }, h('h3', {}, 'Temas'), h('p', { class: 'hint' }, 'Novos temas se desbloqueiam com conquistas.'), wrap);
+}
+
+// Pontos por semana (últimas 8 semanas).
+function evolutionCard() {
+  const box = h('section', { class: 'card' }, h('h3', {}, 'Sua evolução'), h('p', { class: 'loading' }, 'Carregando…'));
+  api('evolucao').then(({ semanas }) => {
+    const max = Math.max(1, ...semanas.map((w) => w.points));
+    const bars = h('div', { class: 'evo-bars', role: 'img', 'aria-label': 'Pontos por semana nas últimas 8 semanas' }, semanas.map((w, i) => {
+      const d = new Date(w.start);
+      return h('div', { class: `evo-col ${i === semanas.length - 1 ? 'now' : ''}`, title: `${w.points} pontos em ${w.matches} partida(s)` },
+        h('span', { class: 'evo-val' }, w.points || ''),
+        h('span', { class: 'evo-bar', style: `height:${Math.max(2, (w.points / max) * 100)}%` }),
+        h('small', {}, `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`));
+    }));
+    box.replaceChildren(h('h3', {}, 'Sua evolução'), h('p', { class: 'hint' }, 'Pontos por semana (todas as partidas valendo ranking).'), bars);
+  }).catch(() => box.remove());
+  return box;
+}
+
+// Saúde do servidor: chamadas, tempo médio e erros nas últimas 24 h.
+export async function showHealth(ctx) {
+  const body = h('div', { class: 'card' }, h('p', { class: 'loading' }, 'Carregando…'));
+  ctx.screen(h('div', { class: 'topbar' }, h('button', { class: 'btn ghost small', onclick: ctx.showMenu }, icon('back'), 'Menu'), h('span', { class: 'topbar-title' }, icon('chart', 'tiny'), 'Saúde do servidor')), body);
+  try {
+    const r = await api('saude');
+    const names = { poll: 'Consultas de 1 s', act: 'Jogadas (palavras)', cmd: 'Comandos da sala' };
+    const maxCalls = Math.max(1, ...r.hourly.map((x) => x.calls));
+    body.replaceChildren(
+      h('h3', {}, 'Últimas 24 horas'),
+      r.kinds.length
+        ? h('table', { class: 'ranking global' },
+            h('thead', {}, h('tr', {}, h('th', {}, 'Tipo'), h('th', {}, 'Chamadas'), h('th', {}, 'Média'), h('th', {}, 'Pior'), h('th', {}, 'Erros'))),
+            h('tbody', {}, r.kinds.map((k) => h('tr', {},
+              h('td', {}, names[k.kind] || k.kind, k.kind === 'poll' && k.calls ? h('small', { class: 'muted' }, ` · ${Math.round((k.empty / k.calls) * 100)}% sem mudança`) : ''),
+              h('td', { class: 'num' }, k.calls), h('td', { class: 'num' }, `${k.avgMs} ms`), h('td', { class: 'num' }, `${k.maxMs} ms`),
+              h('td', { class: `num ${k.errors ? 'bad-text' : ''}` }, `${k.errors}${k.calls ? ` (${((k.errors / k.calls) * 100).toFixed(1)}%)` : ''}`)))))
+        : h('p', { class: 'empty' }, 'Sem partidas em grupo nas últimas 24 horas (as métricas vêm das salas).'),
+      r.hourly.length ? h('div', {}, h('h3', {}, 'Chamadas por hora'),
+        h('div', { class: 'evo-bars' }, r.hourly.map((x) => h('div', { class: 'evo-col', title: `${x.calls} chamadas, ${x.errors} erros` },
+          h('span', { class: 'evo-val' }, x.errors ? `${x.errors}!` : ''),
+          h('span', { class: `evo-bar ${x.errors ? 'bad' : ''}`, style: `height:${Math.max(2, (x.calls / maxCalls) * 100)}%` }),
+          h('small', {}, `${new Date(x.at).getHours()}h`))))) : '');
+  } catch (e) {
+    body.replaceChildren(h('p', { class: 'notice' }, e.message));
+  }
 }

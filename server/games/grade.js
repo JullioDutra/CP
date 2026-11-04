@@ -23,7 +23,7 @@ const game = {
     const size = room.options.size;
     const { grid, words } = makeGrid(room.rng, size, { minWords: MIN_WORDS[size] || 40, tries: size === 6 ? 25 : 60 });
     const bonus = room.mode.bonus ? bonusCells(room.rng, size) : {};
-    room.rd = { grid, size, possible: words, bonus, eliminated: [] };
+    room.rd = { grid, size, possible: words, bonus, eliminated: [], startedAt: room.now() };
     if (room.mode.rain) {
       const drops = makeRain(room.rng, grid, size, room.options.seconds * 1000);
       room.rd.rain = { drops, startedAt: room.now(), everyMs: RAIN.everyMs };
@@ -144,6 +144,13 @@ const game = {
       for (const w of p.rs?.ai || []) aiWords.add(w);
     }
     const { players, counts, totals } = scoreRound(byPlayer, (id, w) => room.players.get(id)?.rs?.wordPts[w] ?? wordPoints(w));
+    // quando cada palavra foi achada (ms desde o início da rodada) — linha do tempo dos resultados
+    const extrasOf = {};
+    for (const [id, r] of Object.entries(players)) {
+      const rs = room.players.get(id)?.rs;
+      for (const w of r.words) if (rs?.times?.[w.w] != null) w.t = rs.times[w.w];
+      if (rs) extrasOf[id] = { maxCombo: rs.maxCombo || 0, hotWords: rs.hotWords || 0, rainWords: rs.rainWords || 0 };
+    }
     let longest = null;
     for (const [id, r] of Object.entries(players)) {
       for (const w of r.words) {
@@ -179,6 +186,8 @@ const game = {
       totals,
       longest,
       longestPossible: longestWord(rd.possible),
+      extrasOf,
+      seconds: room.options.seconds,
       // Chuva de Letras: todas as versões da grade (para mostrar onde estava cada palavra)
       grids: rd.rain ? Array.from({ length: rd.rain.drops.length + 1 }, (_, k) => rainGrid(rd.grid, rd.rain.drops, k)) : undefined,
       extras,
@@ -214,6 +223,11 @@ function accept(room, p, word, path, viaAi) {
   }
   if (room.mode.rain) mult *= rainMult(path, freshCells(room.rd.rain.drops, rainStep(t - room.rd.rain.startedAt)));
   const pts = Math.round(wordPoints(word) * mult);
+  // linha do tempo da rodada e números das conquistas dos modos novos
+  (p.rs.times ||= {})[word] = Math.max(0, t - (room.rd.startedAt || t));
+  if (combo) p.rs.maxCombo = Math.max(p.rs.maxCombo || 0, combo);
+  if (hot && word.includes(hot)) p.rs.hotWords = (p.rs.hotWords || 0) + 1;
+  if (room.mode.rain && mult >= 2 && rainMult(path, freshCells(room.rd.rain.drops, rainStep(t - room.rd.rain.startedAt))) > 1) p.rs.rainWords = (p.rs.rainWords || 0) + 1;
   p.rs.words.push(word);
   p.rs.wordPts[word] = pts;
   if (viaAi) p.rs.ai.push(word);

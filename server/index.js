@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { loadServerDict } from './dict-node.js';
 import { RoomManager } from './rooms.js';
+import { sharePage } from './share-page.js';
 import { createVerifier, loadDotEnv } from './ai.js';
 import { createStore } from './store.js';
 import { createApi } from './api.js';
@@ -35,6 +36,14 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (url.pathname === '/healthz') { res.end('ok'); return; }
     if (url.pathname.startsWith('/api/')) { await api(req, res, url); return; }
+    const share = /^\/s\/([A-Za-z]{4})$/.exec(url.pathname);
+    if (share) {
+      const code = share[1].toUpperCase();
+      const r = manager.rooms.get(code);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(sharePage(code, r ? { mode: r.options.mode, phase: r.phase, players: r.players.size } : null, `http://${req.headers.host}`));
+      return;
+    }
     const rel = publicPath(url.pathname);
     const file = path.join(ROOT, rel);
     if (!file.startsWith(ROOT + path.sep)) throw new Error('caminho inválido');

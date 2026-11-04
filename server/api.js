@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 // Rotas HTTP /api/* — IA de palavras, QR code, perfis, ranking global e partidas solo verificadas.
 import QRCode from 'qrcode';
-import { AVATARS, MULTI_MODES } from '../js/core/multimodes.js';
+import { ALL_AVATARS, AVATARS, MULTI_MODES } from '../js/core/multimodes.js';
 import { createRng } from '../js/core/rng.js';
 import { makeGrid } from '../js/core/letters.js';
 import { SOLO_RANKED, MIN_WORDS, dailyPuzzle, scoreWords } from '../js/core/solo.js';
@@ -15,7 +15,7 @@ function verifySeeded(mode, data, log, elapsedSec) {
   if (mode === 'classico-sudoku') return scoreSudokuLog(setupSudoku(data.seed, data.variant), data.variant, log, elapsedSec);
   if (mode === 'novo-sobrevivencia') return replaySurvival(data.seed, log, elapsedSec + 3);
   const variant = { 'novo-combo': 'combo', 'novo-letra': 'letra', 'novo-chuva': 'chuva' }[mode];
-  if (variant) return replayGradeVariant(data.seed, variant, log, elapsedSec + 3);
+  if (variant) return replayGradeVariant(data.seed, variant, log, elapsedSec + 3, Number(data.variant) || 5);
   return { score: 0, words: 0, longest: null };
 }
 
@@ -56,7 +56,7 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
   }
 
   const profileOf = async (req) => (await store.profileByToken(req.headers['x-trama-perfil']));
-  const cleanProfile = (b) => ({ name: cleanName(b.name), avatar: AVATARS.includes(b.avatar) ? b.avatar : AVATARS[0] });
+  const cleanProfile = (b) => ({ name: cleanName(b.name), avatar: ALL_AVATARS.includes(b.avatar) ? b.avatar : AVATARS[0] });
 
   async function positions(mode, variant, profileId) {
     return Object.fromEntries(await Promise.all(PERIODS.map(async (period) => [period, (await store.positionOf({ mode, variant, period, profileId }))?.pos ?? null])));
@@ -107,11 +107,32 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
       return [200, { rows, voce }];
     },
     // ---------- ligas (temporada do mês) ----------
-    'GET /api/ligas': async (req) => {
+    'GET /api/ligas': async (req, res, url) => {
       const me = (await profileOf(req));
-      const season = seasonOf(now());
+      // temporadas passadas: ?temporada=AAAA-MM
+      const asked = url.searchParams.get('temporada');
+      const season = /^\d{4}-\d{2}$/.test(asked || '') && asked <= seasonOf(now()) ? asked : seasonOf(now());
       return [200, { temporada: season, rows: (await store.leagueTable({ season, limit: 30 })), voce: me ? (await store.ratingOf(me.id, season)) : null }];
     },
+
+    // ---------- amigos, recordes e evolução ----------
+    'GET /api/amigos': async (req) => {
+      const me = await profileOf(req);
+      if (!me) return [404, { erro: 'Perfil não encontrado' }];
+      return [200, await store.friends(me.id)];
+    },
+    'GET /api/recordes': async (req) => {
+      const me = await profileOf(req);
+      if (!me) return [404, { erro: 'Perfil não encontrado' }];
+      return [200, { recordes: await store.bests(me.id) }];
+    },
+    'GET /api/evolucao': async (req) => {
+      const me = await profileOf(req);
+      if (!me) return [404, { erro: 'Perfil não encontrado' }];
+      return [200, { semanas: await store.weekly(me.id) }];
+    },
+    // saúde do servidor (métricas das últimas 24 h)
+    'GET /api/saude': async () => [200, await store.metricsSummary(24)],
 
     // ---------- Arena Pública ----------
     'GET /api/arena': async () => [200, (await arenaStatus())],
@@ -173,7 +194,7 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
       let r;
       if (t.data?.seed != null) {
         const v = verifySeeded(t.mode, t.data, b.log && typeof b.log === 'object' ? b.log : {}, elapsed / 1000);
-        r = { score: v.score, accepted: { length: v.words }, rejected: [], longest: v.longest };
+        r = { score: v.score, accepted: { length: v.words }, rejected: [], longest: v.longest, extras: { maxCombo: v.maxCombo || 0, hotWords: v.hotWords || 0, rainWords: v.rainWords || 0 } };
       } else {
         r = scoreWords(t.data, Array.isArray(b.palavras) ? b.palavras : []);
       }
@@ -181,7 +202,7 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
       if (t.ranked && r.score > 0) {
         conquistas = (await store.recordMatch({
           mode: t.mode, variant: t.variant, kind: 'solo',
-          players: [{ profileId: p.id, name: p.name, avatar: p.avatar, score: r.score, place: 1, words: r.accepted.length, unique: 0, longest: r.longest }],
+          players: [{ profileId: p.id, name: p.name, avatar: p.avatar, score: r.score, place: 1, words: r.accepted.length, unique: 0, longest: r.longest, ...(r.extras || {}) }],
         })).achievements[p.id] || [];
       }
       return [200, {

@@ -143,17 +143,19 @@ export function replaySurvival(seed, log = {}, maxSurvived = Infinity) {
 export const VARIANT_TIME = 120;
 export const VARIANT_SIZE = 5;
 
-export function setupGradeVariant(seed, kind) {
+const MIN_WORDS_BY_SIZE = { 4: 35, 5: 90, 6: 150 };
+export function setupGradeVariant(seed, kind, size = VARIANT_SIZE) {
+  size = [4, 5, 6].includes(Number(size)) ? Number(size) : VARIANT_SIZE;
   const rng = createRng(seed);
-  const { grid } = makeGrid(rng, VARIANT_SIZE, { minWords: 90, tries: 40 });
-  const out = { grid, size: VARIANT_SIZE };
+  const { grid } = makeGrid(rng, size, { minWords: MIN_WORDS_BY_SIZE[size], tries: size === 6 ? 25 : 40 });
+  const out = { grid, size };
   if (kind === 'letra') {
     const counts = {};
     for (const l of grid) counts[l] = (counts[l] || 0) + 1;
     const letters = rng.shuffle(Object.keys(counts)).sort((a, b) => counts[b] - counts[a]).slice(0, 8);
     out.hot = { letters: rng.shuffle(letters), startedAt: 0, everyMs: HOT.everyMs };
   }
-  if (kind === 'chuva') out.drops = makeRain(rng, grid, VARIANT_SIZE, VARIANT_TIME * 1000);
+  if (kind === 'chuva') out.drops = makeRain(rng, grid, size, VARIANT_TIME * 1000);
   return out;
 }
 
@@ -177,12 +179,12 @@ const pathFits = (grid, size, w, path) => Array.isArray(path) && path.length ===
   && path.every((i, k) => Number.isInteger(i) && grid[i] === w[k] && path.indexOf(i) === k && (k === 0 || isAdjacent(path[k - 1], i, size)));
 
 // log: { events: [{ w, path, t (ms) }] } — refaz a partida e devolve os pontos oficiais.
-export function replayGradeVariant(seed, kind, log = {}, maxElapsedSec = VARIANT_TIME + 3) {
-  const setup = setupGradeVariant(seed, kind);
+export function replayGradeVariant(seed, kind, log = {}, maxElapsedSec = VARIANT_TIME + 3, size = VARIANT_SIZE) {
+  const setup = setupGradeVariant(seed, kind, size);
   const limit = Math.min(maxElapsedSec, VARIANT_TIME + 3) * 1000;
   const found = new Set();
   const st = {};
-  let score = 0, lastT = 0;
+  let score = 0, lastT = 0, maxCombo = 0, hotWords = 0, rainWords = 0;
   for (const e of (Array.isArray(log.events) ? log.events : []).slice(0, 400)) {
     const t = Number(e?.t);
     if (!Number.isFinite(t) || t < lastT || t > limit) break;
@@ -197,8 +199,12 @@ export function replayGradeVariant(seed, kind, log = {}, maxElapsedSec = VARIANT
     }
     if (!pathFits(grid, setup.size, w, e.path)) continue;
     found.add(w);
-    score += variantPoints(setup, kind, w, e.path, t, st).pts;
+    const r = variantPoints(setup, kind, w, e.path, t, st);
+    score += r.pts;
+    maxCombo = Math.max(maxCombo, st.combo || 0);
+    if (kind === 'letra' && r.mult > 1) hotWords++;
+    if (kind === 'chuva' && r.mult > 1) rainWords++;
   }
   const words = [...found].sort((a, b) => b.length - a.length);
-  return { score, words: words.length, longest: words[0] || null };
+  return { score, words: words.length, longest: words[0] || null, maxCombo, hotWords, rainWords };
 }

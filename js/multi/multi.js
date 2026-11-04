@@ -4,7 +4,7 @@ import { timeAlert, clearTimeAlert } from '../core/timealert.js';
 import { icon, modeIcon } from '../core/icons.js';
 import { createWordGrid } from '../core/wordgrid.js';
 import { POINTS_HINT } from '../core/letters.js';
-import { AVATARS, MULTI_MODES, PLAYER_HUES, formatOption, TEAMS, REACTIONS } from '../core/multimodes.js';
+import { AVATARS, MULTI_MODES, effectiveMode, PLAYER_HUES, formatOption, TEAMS, REACTIONS } from '../core/multimodes.js';
 import { leagueOf } from '../core/leagues.js';
 import { achievementByKey } from '../core/achievements.js';
 import { getPlayerName, addScore } from '../core/ranking.js';
@@ -18,6 +18,7 @@ import { createReveal } from './reveal.js';
 import { createTankReveal } from './tankreveal.js';
 import { comboMeter, hotLetterUi, rainChip } from '../core/grade-extras.js';
 import { showWordPath } from '../core/wordpath.js';
+import { findPath } from '../core/letters.js';
 import { mascotSay } from '../core/mascot.js';
 import { confetti } from '../core/fx.js';
 
@@ -40,17 +41,40 @@ export function initMulti(c) {
   ctx = c;
 }
 
+const LAST_ROOM = 'trama.lastRoom';
 const store = {
   get(k) { try { return JSON.parse(sessionStorage.getItem(k)); } catch { return null; } },
-  set(k, v) { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } },
+  set(k, v) {
+    try {
+      v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, JSON.stringify(v));
+      // guarda também a última sala (mesmo fechando a aba) para o "Continuar" do início
+      if (k === SESSION_KEY && v && !v.tv) localStorage.setItem(LAST_ROOM, JSON.stringify({ ...v, at: Date.now() }));
+    } catch { /* ignore */ }
+  },
 };
+const forgetLastRoom = () => { try { localStorage.removeItem(LAST_ROOM); } catch { /* ignore */ } };
+
+// Sala em que a pessoa estava (até 3 h atrás), para o cartão "Continuar".
+export function lastRoom() {
+  try {
+    const r = JSON.parse(localStorage.getItem(LAST_ROOM));
+    return r && Date.now() - r.at < 3 * 3600 * 1000 ? r : null;
+  } catch { return null; }
+}
+export function resumeLastRoom() {
+  const r = lastRoom();
+  if (!r) return;
+  store.set(SESSION_KEY, { code: r.code, id: r.id, token: r.token });
+  openMulti();
+}
 const serverNow = () => Date.now() + offset;
 const me = () => state?.players.find((p) => p.id === state.you);
 const isHost = () => state?.hostId === state?.you;
-const modeOf = (s = state) => MULTI_MODES[s.options.mode];
+const modeOf = (s = state) => effectiveMode(s.options.mode, s.subMode);
 const playerById = (id) => state?.players.find((p) => p.id === id);
 const hueOf = (id) => PLAYER_HUES[(playerById(id)?.hue ?? 0) % PLAYER_HUES.length];
-const joinLink = (code) => `${location.origin}${location.pathname}?sala=${code}`;
+// link curto da sala: /s/ABCD mostra uma prévia bonita no WhatsApp e leva direto para o jogo
+const joinLink = (code) => `${location.origin}/s/${code}`;
 
 function setUrl(params) {
   const url = new URL(location.href);
@@ -111,6 +135,7 @@ function onMessage(msg) {
     else showHome({ error: msg.message });
   } else if (msg.t === 'expired') {
     store.set(SESSION_KEY, null);
+    forgetLastRoom();
     setUrl(null);
     showHome({ error: 'Essa sala não existe mais. Crie uma nova!' });
   } else if (msg.t === 'left') {
@@ -141,6 +166,7 @@ function phaseSounds(prev, s) {
 function leaveRoom() {
   net?.send({ t: 'leave' });
   store.set(SESSION_KEY, null);
+  forgetLastRoom();
   setUrl(null);
   state = null;
   view = null;
@@ -393,14 +419,38 @@ function playerRow(p, right = []) {
   );
 }
 
+// Placar ao vivo. Quando alguém sobe muito de uma vez (palavra grande), a linha solta uma
+// faísca — sem revelar a palavra. No telão, uma narração grande conta o destaque.
 function liveBoard(s, { title = 'Placar ao vivo', hint = null } = {}) {
   const list = h('ol', { class: 'live-board' });
-  const el = h('div', { class: 'found-panel live-panel' }, h('h3', {}, title), list, hint ? h('p', { class: 'hint' }, hint) : '');
+  const narr = h('div', { class: 'tv-narration', 'aria-live': 'polite' });
+  const el = h('div', { class: 'found-panel live-panel' }, h('h3', {}, title), list, hint ? h('p', { class: 'hint' }, hint) : '', s.spectator ? narr : '');
+  const last = {};
+  let narrTimer = null;
   return {
     el,
     update(st) {
       const players = st.players.slice().sort((a, b) => b.roundPoints - a.roundPoints);
-      list.replaceChildren(...players.map((p) => playerRow(p, h('span', { class: 'live-pts' }, p.roundLabel))));
+      const jumps = {};
+      for (const p of players) {
+        const d = p.roundPoints - (last[p.id] ?? p.roundPoints);
+        if (st.phase === 'playing' && d >= 11) jumps[p.id] = d;
+        last[p.id] = p.roundPoints;
+      }
+      list.replaceChildren(...players.map((p) => {
+        const row = playerRow(p, [jumps[p.id] ? h('span', { class: 'spark-tag' }, `+${jumps[p.id]}`) : '', h('span', { class: 'live-pts' }, p.roundLabel)]);
+        if (jumps[p.id]) row.classList.add('spark');
+        return row;
+      }));
+      const best = Object.entries(jumps).sort((a, b) => b[1] - a[1])[0];
+      if (best && st.spectator) {
+        const p = players.find((x) => x.id === best[0]);
+        narr.replaceChildren(h('span', {}, p.avatar), ` ${p.name} achou uma palavra de ouro! +${best[1]}`);
+        narr.classList.remove('show'); void narr.offsetWidth; narr.classList.add('show');
+        clearTimeout(narrTimer);
+        narrTimer = setTimeout(() => narr.classList.remove('show'), 3500);
+        play('big');
+      }
     },
   };
 }
@@ -467,10 +517,16 @@ function lobbyView() {
         h('div', { class: 'lobby-grid' },
           h('div', { class: 'card' },
             h('h3', {}, `Jogadores (${s.players.length})`),
-            h('ul', { class: 'players' }, s.players.map((p) => playerRow(p, h('span', { class: 'ready' }, p.id === s.hostId ? '' : p.ready ? h('span', { class: 'ok' }, icon('check', 'tiny'), 'pronto') : h('span', { class: 'muted' }, 'esperando'))))),
+            h('ul', { class: 'players' }, s.players.map((p) => playerRow(p, [
+              h('span', { class: 'ready' }, p.id === s.hostId ? '' : p.ready ? h('span', { class: 'ok' }, icon('check', 'tiny'), 'pronto') : h('span', { class: 'muted' }, 'esperando')),
+              // anfitrião pode passar a vez para outra pessoa
+              host && p.id !== s.you && p.connected ? h('button', { class: 'link-btn small pass-host', title: `Passar o anfitrião para ${p.name}`, onclick: () => net.send({ t: 'host', id: p.id }) }, 'tornar anfitrião') : '',
+            ]))),
+            s.players.some((p) => p.id !== s.hostId && !p.ready) ? h('p', { class: 'hint' }, `Ainda não estão prontos: ${s.players.filter((p) => p.id !== s.hostId && !p.ready).map((p) => p.name).join(', ')}.`) : '',
             s.tv ? h('p', { class: 'hint' }, icon('tv', 'inline'), ' Telão conectado: a partida aparece grande na TV.') : ''),
           h('div', { class: 'card' },
-            h('h3', {}, host ? 'Escolha o modo' : 'Modo escolhido'),
+            h('div', { class: 'mode-head' }, h('h3', {}, host ? 'Escolha o modo' : 'Modo escolhido'),
+              host ? h('button', { class: 'btn ghost small', onclick: (e) => spinModes(e.currentTarget.closest('.card'), modes) }, icon('shuffle'), 'Sortear modo') : ''),
             h('p', { class: 'group-label' }, 'Clássicos'),
             h('div', { class: 'mode-grid tight' }, modes.filter((m) => m.category === 'classico').map(modeCard)),
             h('p', { class: 'group-label novo' }, 'Novos · exclusivos Trama'),
@@ -491,6 +547,7 @@ function lobbyView() {
 // ----- saguão (telão) -----
 function tvLobbyView() {
   const el = h('div', { class: 'tv-lobby' });
+  const seen = new Set();
   return {
     el,
     update(s) {
@@ -509,7 +566,7 @@ function tvLobbyView() {
           h('p', { class: 'hint' }, Object.entries(mode.options).map(([k, spec]) => `${spec.label}: ${formatOption(spec, s.options[k])}`).join(' · '))),
         h('div', { class: 'tv-players' },
           s.players.length
-            ? s.players.map((p) => h('div', { class: `tv-player ${p.connected ? '' : 'off'}` }, h('div', { class: `tv-avatar ${p.crown ? 'crowned' : ''}`, style: `--hue:${hueOf(p.id)}` }, p.avatar, crownBadge(p)), h('div', {}, p.name), h('small', {}, p.id === s.hostId ? 'anfitrião' : p.ready ? 'pronto' : '…')))
+            ? s.players.map((p) => h('div', { class: `tv-player ${p.connected ? '' : 'off'} ${seen.has(p.id) ? '' : (seen.add(p.id), play('good'), 'arrive')}` }, h('div', { class: `tv-avatar ${p.crown ? 'crowned' : ''}`, style: `--hue:${hueOf(p.id)}` }, p.avatar, crownBadge(p)), h('div', {}, p.name), h('small', {}, p.id === s.hostId ? 'anfitrião' : p.ready ? 'pronto' : '…')))
             : h('p', { class: 'section-sub' }, 'Ninguém entrou ainda. O primeiro a entrar vira o anfitrião.')),
         h('p', { class: 'section-sub center' }, host ? `${host.name} começa a partida pelo celular.` : '')
       );
@@ -529,15 +586,39 @@ function countdownView(s) {
     el: h('div', { class: 'countdown' },
       h('p', {}, `Rodada ${s.round + 1} de ${s.options.rounds}`),
       h('div', { class: 'count-num', 'data-clock': 'count' }, '3'),
-      h('p', { class: 'section-sub' }, `${modeOf(s).name} — ${modeOf(s).short}`),
+      modeOf(s).sub ? roulette(modeOf(s)) : h('p', { class: 'section-sub' }, `${modeOf(s).name} — ${modeOf(s).short}`),
       s.teams && s.teams.of[s.you] ? h('p', { class: 'team-banner', style: `--hue:${TEAMS[s.teams.of[s.you]].hue}` }, `Você está no ${TEAMS[s.teams.of[s.you]].avatar} ${TEAMS[s.teams.of[s.you]].name}`) : ''),
     update() {},
   };
 }
 
+// Modo Surpresa: a roleta gira pelos modos e para no sorteado.
+function roulette(mode) {
+  const names = mode.playlist.map((id) => MULTI_MODES[id]);
+  const label = h('strong', { class: 'rl-name' }, '');
+  const el = h('div', { class: 'roulette' }, h('span', { class: 'group-label' }, 'Modo desta rodada'), label, h('span', { class: 'rl-short muted' }, ''));
+  let k = 0;
+  const spin = (delay) => {
+    if (delay > 260) {
+      label.textContent = mode.sub.name;
+      el.querySelector('.rl-short').textContent = mode.sub.short;
+      el.classList.add('landed');
+      play('big');
+      mascotSay('start');
+      return;
+    }
+    label.textContent = names[k++ % names.length].name;
+    play('tick');
+    setTimeout(() => spin(delay * 1.18), delay);
+  };
+  setTimeout(() => spin(60), 150);
+  return el;
+}
+
 function hudBar(s, ...extra) {
   return h('div', { class: 'hud' },
     h('div', { class: 'hud-item hud-time' }, h('span', {}, 'Tempo'), h('strong', { 'data-clock': 'time' }, '')),
+    modeOf(s).sub ? h('div', { class: 'hud-item hud-sub' }, h('span', {}, 'Modo'), h('strong', {}, modeOf(s).sub.name)) : '',
     h('div', { class: 'hud-item' }, h('span', {}, 'Rodada'), h('strong', {}, `${s.round}/${s.options.rounds}`)),
     ...extra);
 }
@@ -808,7 +889,8 @@ function resultsView(s) {
   const actions = h('div', { class: 'row-actions center hidden' });
   const globalEl = h('div', { class: 'global-pos' });
   const progressEl = h('div', { class: 'global-pos' }); // nível e conquistas novas
-  const statsPanel = h('div', { class: 'stats-panel hidden' }, extra, legend, h('div', { class: 'result-list' }, rows));
+  const tools = r.type === 'grade' && r.players ? resultTools(r, byId, s) : '';
+  const statsPanel = h('div', { class: 'stats-panel hidden' }, tools, extra, legend, h('div', { class: 'result-list' }, rows));
   const statsBtn = h('button', { class: 'btn ghost', onclick: () => {
     const open = statsPanel.classList.toggle('hidden') === false;
     statsBtn.replaceChildren(icon('chart'), open ? 'Fechar estatísticas' : 'Mais estatísticas');
@@ -872,10 +954,14 @@ function resultsView(s) {
       actions.replaceChildren(
         ...[isHost()
           ? (final
-            ? [h('button', { class: 'btn big', onclick: () => net.send({ t: 'rematch', again: true }) }, icon('refresh'), 'Jogar novamente'),
+            ? [h('button', { class: 'btn big', onclick: () => net.send({ t: 'rematch', again: true }) }, icon('refresh'), 'Jogar novamente', wantsLabel(st)),
                h('button', { class: 'btn ghost', onclick: () => net.send({ t: 'rematch' }) }, 'Trocar modo')]
             : h('button', { class: 'btn big', onclick: () => net.send({ t: 'next' }) }, 'Próxima rodada'))
-          : h('p', { class: 'section-sub' }, final ? 'O anfitrião pode começar outra partida. A coroa continua valendo!' : 'Aguardando o anfitrião iniciar a próxima rodada…')].flat(),
+          : final
+            ? [h('button', { class: `btn ${st.rematchWants?.includes(st.you) ? 'ghost' : 'big'}`, onclick: () => net.send({ t: 'want', on: !st.rematchWants?.includes(st.you) }) },
+                  icon('refresh'), st.rematchWants?.includes(st.you) ? 'Você topou! (desfazer)' : 'Quero revanche', wantsLabel(st)),
+               h('p', { class: 'section-sub' }, 'O anfitrião começa a próxima. A coroa continua valendo!')]
+            : h('p', { class: 'section-sub' }, 'Aguardando o anfitrião iniciar a próxima rodada…')].flat(),
         h('button', { class: 'btn ghost', onclick: leaveRoom }, 'Sair da sala'));
     },
   };
@@ -1022,4 +1108,164 @@ function showPlayerWords(r, id, byId) {
         : h('p', { class: 'hint' }, 'Nenhuma palavra nesta rodada.'),
       h('p', { class: 'hint' }, 'Toque numa palavra para ver onde ela estava.')));
   document.body.append(sheet);
+}
+
+// "3/5 querem" no botão de revanche.
+function wantsLabel(st) {
+  const n = st.rematchWants?.length || 0;
+  return n ? h('span', { class: 'wants' }, ` · ${n}/${st.players.filter((p) => p.connected).length} querem`) : '';
+}
+
+// Roleta do saguão: passa pelos modos e escolhe um ao acaso.
+function spinModes(card, modes) {
+  const cards = [...card.querySelectorAll('.mode-card')];
+  if (!cards.length) return;
+  const pick = Math.floor(Math.random() * modes.length);
+  const total = modes.length * 2 + pick;
+  let k = 0;
+  const step = (delay) => {
+    cards.forEach((c, i) => c.classList.toggle('spin-on', i === k % cards.length));
+    play('tick');
+    if (k >= total) {
+      setTimeout(() => { cards.forEach((c) => c.classList.remove('spin-on')); net.send({ t: 'options', options: { mode: modes[pick].id } }); play('big'); }, 450);
+      return;
+    }
+    k++;
+    setTimeout(() => step(delay * 1.07), delay);
+  };
+  step(55);
+}
+
+// ---------- ferramentas do resultado (grade em grupo) ----------
+function resultTools(r, byId, s) {
+  const ids = Object.keys(r.players).filter((id) => byId[id]);
+  const wrap = h('div', { class: 'result-tools' },
+    timelineChart(r, ids, byId),
+    h('div', { class: 'row-actions center' },
+      h('button', { class: 'btn ghost small', onclick: () => replayRound(r, byId) }, icon('play'), 'Replay da rodada'),
+      ids.length >= 2 ? h('button', { class: 'btn ghost small', onclick: () => compareSheet(r, ids, byId, s.you) }, icon('users'), 'Comparar duas pessoas') : '',
+      h('button', { class: 'btn ghost small', onclick: () => shareResultCard(r, byId, s) }, icon('share'), 'Compartilhar resultado')));
+  return wrap;
+}
+
+// Pontos acumulados de cada pessoa ao longo da rodada (SVG simples, cores dos jogadores).
+function timelineChart(r, ids, byId) {
+  const total = (r.seconds || 120) * 1000;
+  const W = 320, H = 150, pad = { l: 34, r: 10, t: 10, b: 22 };
+  const series = ids.map((id) => {
+    let acc = 0;
+    const pts = r.players[id].words.filter((w) => w.t != null).sort((a, b) => a.t - b.t).map((w) => [w.t, (acc += w.pts)]);
+    return { id, pts, final: acc };
+  }).filter((x) => x.pts.length);
+  if (!series.length) return '';
+  const max = Math.max(1, ...series.map((x) => x.final));
+  const X = (t) => pad.l + (Math.min(t, total) / total) * (W - pad.l - pad.r);
+  const Y = (v) => H - pad.b - (v / max) * (H - pad.t - pad.b);
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('class', 'timeline');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Linha do tempo da rodada: pontos de cada pessoa ao longo do tempo');
+  let inner = `<line x1="${pad.l}" y1="${H - pad.b}" x2="${W - pad.r}" y2="${H - pad.b}" class="tl-axis"/>`;
+  for (const v of [0, Math.round(max / 2), max]) inner += `<text x="${pad.l - 6}" y="${Y(v) + 4}" text-anchor="end" class="tl-label">${v}</text><line x1="${pad.l}" x2="${W - pad.r}" y1="${Y(v)}" y2="${Y(v)}" class="tl-grid"/>`;
+  for (let sec = 0; sec <= total / 1000; sec += total > 90000 ? 30 : 20) inner += `<text x="${X(sec * 1000)}" y="${H - 6}" text-anchor="middle" class="tl-label">${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}</text>`;
+  for (const x of series) {
+    const hue = hueOf(x.id);
+    const d = [[0, 0], ...x.pts].map(([t, v], i) => `${i ? 'L' : 'M'}${X(t).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+    inner += `<path d="${d}" fill="none" stroke="hsl(${hue} 70% 48%)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" class="tl-line"/>`;
+    const [lt, lv] = x.pts[x.pts.length - 1];
+    inner += `<circle cx="${X(lt)}" cy="${Y(lv)}" r="4" fill="hsl(${hue} 70% 48%)"/>`;
+  }
+  svg.innerHTML = inner;
+  const legend = h('div', { class: 'tl-legend' }, series.map((x) => h('span', { style: `--c:hsl(${hueOf(x.id)} 70% 48%)` }, `${byId[x.id].avatar} ${byId[x.id].name} · ${x.final}`)));
+  return h('div', { class: 'timeline-box' }, h('h3', {}, 'Linha do tempo da rodada'), svg, legend);
+}
+
+// Duas pessoas lado a lado: palavras em comum e as que só cada uma achou.
+function compareSheet(r, ids, byId, you) {
+  const a0 = ids.includes(you) ? you : ids[0];
+  const b0 = ids.find((id) => id !== a0);
+  const opt = (sel) => ids.map((id) => h('option', { value: id, selected: id === sel ? true : null }, `${byId[id].avatar} ${byId[id].name}`));
+  const selA = h('select', { id: 'cmp-a', 'aria-label': 'Primeira pessoa' }, opt(a0));
+  const selB = h('select', { id: 'cmp-b', 'aria-label': 'Segunda pessoa' }, opt(b0));
+  const body = h('div', { class: 'cmp-body' });
+  const chips = (list) => (list.length ? h('div', { class: 'wchips' }, list.map((w) => h('span', { class: 'wchip' }, w.toUpperCase()))) : h('p', { class: 'hint' }, 'nenhuma'));
+  const draw = () => {
+    const A = new Set(r.players[selA.value].words.map((w) => w.w));
+    const B = new Set(r.players[selB.value].words.map((w) => w.w));
+    const both = [...A].filter((w) => B.has(w));
+    body.replaceChildren(
+      h('h4', {}, `Em comum (${both.length})`), chips(both),
+      h('h4', {}, `Só ${byId[selA.value].name} (${A.size - both.length})`), chips([...A].filter((w) => !B.has(w))),
+      h('h4', {}, `Só ${byId[selB.value].name} (${B.size - both.length})`), chips([...B].filter((w) => !A.has(w))));
+  };
+  selA.onchange = draw; selB.onchange = draw;
+  draw();
+  const close = () => sheet.remove();
+  const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => e.target === sheet && close() },
+    h('div', { class: 'sheet player-words', role: 'dialog', 'aria-label': 'Comparar duas pessoas' },
+      h('div', { class: 'wp-head' }, h('strong', { class: 'wp-word' }, 'Comparar'), h('button', { class: 'btn ghost small icon-btn', 'aria-label': 'Fechar', onclick: close }, icon('close'))),
+      h('div', { class: 'cmp-pick' }, selA, h('span', {}, '×'), selB), body));
+  document.body.append(sheet);
+}
+
+// Replay acelerado: as palavras aparecem na grade na ordem em que foram achadas.
+function replayRound(r, byId) {
+  if (!r.grid) return;
+  const events = [];
+  for (const [id, d] of Object.entries(r.players)) for (const w of d.words) if (w.t != null) events.push({ id, w: w.w, t: w.t, pts: w.pts });
+  events.sort((a, b) => a.t - b.t);
+  const grids = r.grids || [r.grid];
+  const tiles = grids[0].map((l) => h('span', { class: 'wp-tile' }, l.toUpperCase()));
+  const feed = h('ol', { class: 'replay-feed' });
+  const clock = h('strong', { class: 'replay-clock' }, '0:00');
+  let timers = [];
+  const close = () => { timers.forEach(clearTimeout); sheet.remove(); };
+  const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => e.target === sheet && close() },
+    h('div', { class: 'sheet wordpath replay', role: 'dialog', 'aria-label': 'Replay da rodada' },
+      h('div', { class: 'wp-head' }, h('div', {}, h('strong', { class: 'wp-word' }, 'Replay'), h('span', { class: 'muted' }, ' 8× mais rápido · '), clock),
+        h('button', { class: 'btn ghost small icon-btn', 'aria-label': 'Fechar', onclick: close }, icon('close'))),
+      h('div', { class: 'wp-board', style: `--n:${r.size}` }, tiles), feed));
+  document.body.append(sheet);
+  const SPEED = 8;
+  events.forEach((e) => timers.push(setTimeout(() => {
+    const sec = Math.floor(e.t / 1000);
+    clock.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    let path = null, grid = grids[0];
+    for (const g of grids) { path = findPath(g, r.size, e.w); if (path) { grid = g; break; } }
+    tiles.forEach((t, i) => { t.textContent = grid[i].toUpperCase(); t.classList.remove('on', 'end'); });
+    (path || []).forEach((i, k) => { tiles[i].classList.add('on'); if (k === path.length - 1) tiles[i].classList.add('end'); });
+    feed.prepend(h('li', { style: `--c:hsl(${hueOf(e.id)} 70% 48%)` }, `${byId[e.id]?.avatar || ''} ${e.w.toUpperCase()}`, h('small', {}, ` +${e.pts}`)));
+    play(e.w.length >= 6 ? 'good' : 'tick');
+  }, 300 + e.t / SPEED)));
+}
+
+// Cartão do resultado como imagem (para mandar no grupo).
+async function shareResultCard(r, byId, s) {
+  const standings = s.standings.filter((x) => byId[x.id]).slice(0, 5);
+  const W = 720, H = 480 + standings.length * 0;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, '#eef4ff'); grad.addColorStop(1, '#fdf1d0');
+  g.fillStyle = grad; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#1e3a8a'; g.font = '800 44px system-ui, sans-serif'; g.fillText('Trama', 40, 70);
+  g.fillStyle = '#334155'; g.font = '700 24px system-ui, sans-serif'; g.fillText(`${modeOf(s).name} · sala ${s.code}`, 40, 108);
+  standings.forEach((x, i) => {
+    const p = byId[x.id];
+    const y = 170 + i * 56;
+    g.fillStyle = i === 0 ? '#f0b429' : '#ffffff'; g.beginPath(); g.roundRect?.(36, y - 36, W - 72, 48, 14); g.fill();
+    g.fillStyle = '#0f172a'; g.font = '800 26px system-ui, sans-serif';
+    g.fillText(`${i + 1}º  ${p.avatar}  ${p.name}`, 56, y - 4);
+    g.textAlign = 'right'; g.fillText(`${x.total} pts`, W - 56, y - 4); g.textAlign = 'left';
+  });
+  if (r.longest) { g.fillStyle = '#334155'; g.font = '700 22px system-ui, sans-serif'; g.fillText(`Maior palavra: ${r.longest.w.toUpperCase()} (${byId[r.longest.id]?.name || ''})`, 40, H - 40); }
+  const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+  const file = new File([blob], `trama-${s.code}.png`, { type: 'image/png' });
+  if (navigator.canShare?.({ files: [file] })) { navigator.share({ files: [file], title: 'Resultado no Trama' }).catch(() => {}); return; }
+  const a = h('a', { href: URL.createObjectURL(blob), download: file.name });
+  document.body.append(a); a.click(); a.remove();
+  toast(root, 'Imagem do resultado salva', 'good');
 }

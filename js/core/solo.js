@@ -26,9 +26,9 @@ export const SOLO_RANKED = {
   // modos com semente: o servidor sorteia, o celular joga, o servidor refaz e confere (solo-verify.js)
   'classico-cacapalavras': { name: 'Caça-Palavras', icon: '🔍', category: 'classico', duration: 240, seeded: true, variants: ['surpresa', 'mistura'], variantLabel: (v) => (v === 'mistura' ? 'Mistura' : 'Tema surpresa') },
   'classico-sudoku': { name: 'Sudoku', icon: '🔢', category: 'classico', duration: 3600, seeded: true, variants: ['facil', 'medio', 'dificil'], variantLabel: (v) => ({ facil: 'Fácil', medio: 'Médio', dificil: 'Difícil' })[v] || v },
-  'novo-combo': { name: 'Grade Combo', icon: '🔥', category: 'novo', duration: 120, seeded: true, variants: ['5'], variantLabel: () => '5×5' },
-  'novo-letra': { name: 'Letra da Vez', icon: '🎯', category: 'novo', duration: 120, seeded: true, variants: ['5'], variantLabel: () => '5×5' },
-  'novo-chuva': { name: 'Chuva de Letras', icon: '🌧️', category: 'novo', duration: 120, seeded: true, variants: ['5'], variantLabel: () => '5×5' },
+  'novo-combo': { name: 'Grade Combo', icon: '🔥', category: 'novo', duration: 120, seeded: true, variants: ['4', '5', '6'], variantLabel: (v) => `${v}×${v}` },
+  'novo-letra': { name: 'Letra da Vez', icon: '🎯', category: 'novo', duration: 120, seeded: true, variants: ['4', '5', '6'], variantLabel: (v) => `${v}×${v}` },
+  'novo-chuva': { name: 'Chuva de Letras', icon: '🌧️', category: 'novo', duration: 120, seeded: true, variants: ['4', '5', '6'], variantLabel: (v) => `${v}×${v}` },
   'novo-sobrevivencia': { name: 'Sobrevivência', icon: '⏳', category: 'novo', duration: 1800, seeded: true, variants: ['5'], variantLabel: () => '5×5' },
 };
 

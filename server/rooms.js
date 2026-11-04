@@ -120,7 +120,9 @@ export class RoomManager {
       join: (m) => {
         const r = this.rooms.get(String(m.code || '').toUpperCase().trim());
         if (!r) throw new Error('Sala não encontrada. Confira o código.');
-        attach(r, r.addPlayer(this.withProfile(m)));
+        const who = this.withProfile(m);
+        r.checkPin(m.pin, { name: who.name, profileId: who.profileId });
+        attach(r, r.addPlayer(who));
       },
       // telão: entra como espectador (não joga, só mostra)
       watch: (m) => {
@@ -144,6 +146,9 @@ export class RoomManager {
       start: () => room.start(playerId),
       next: () => room.next(playerId),
       rematch: (m) => room.rematch(playerId, !!m.again),
+      want: (m) => room.wantRematch(playerId, m.on !== false),
+      host: (m) => room.setHost(playerId, String(m.id || '')),
+      privacy: (m) => room.setPrivacy(playerId, { name: m.name, pin: m.pin }),
       act: (m) => {
         Promise.resolve(room.act(playerId, m))
           .catch((e) => ({ ok: false, reason: e.message }))

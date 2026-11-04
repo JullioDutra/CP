@@ -2,7 +2,9 @@
 import { h, toast } from '../core/ui.js';
 import { isWord } from '../core/dict.js';
 import { checkWord } from '../core/verify.js';
-import { wordPoints, sortMissed } from '../core/letters.js';
+import { wordPoints, sortMissed, findPath } from '../core/letters.js';
+import { confetti } from '../core/fx.js';
+import { mascotSay } from '../core/mascot.js';
 import { showWordPath } from '../core/wordpath.js';
 
 export function foundPanel() {
@@ -41,4 +43,46 @@ export async function confirmWord(root, w, isOver = () => false) {
   const r = await checkWord(w);
   if (isOver()) return { ok: false };
   return { ok: r.ok, ai: r.ok };
+}
+
+// ---------- Metas da partida (solo) ----------
+// Três metas simples que vão ficando verdes durante a partida.
+const GOALS = { 4: { words: 8, pts: 30 }, 5: { words: 12, pts: 50 }, 6: { words: 15, pts: 80 } };
+export function createGoals(size = 5) {
+  const g = GOALS[size] || GOALS[5];
+  const long = size >= 6 ? 7 : 6;
+  const list = [
+    { label: `${g.words} palavras`, ok: (s) => s.words >= g.words },
+    { label: `Uma de ${long}+ letras`, ok: (s) => s.longest >= long },
+    { label: `${g.pts} pontos`, ok: (s) => s.score >= g.pts },
+  ];
+  const chips = list.map((m) => h('span', { class: 'goal' }, h('i', { 'aria-hidden': 'true' }), m.label));
+  const el = h('div', { class: 'goals', 'aria-label': 'Metas da partida' }, h('span', { class: 'group-label' }, 'Metas'), chips);
+  let done = 0;
+  return {
+    el,
+    update(s) {
+      list.forEach((m, i) => {
+        if (!chips[i].classList.contains('done') && m.ok(s)) {
+          chips[i].classList.add('done');
+          done++;
+          if (done === list.length) { confetti({ count: 50 }); mascotSay('record'); }
+        }
+      });
+    },
+    get done() { return done; },
+    total: list.length,
+  };
+}
+
+// ---------- Dica: mostra a 1ª letra de uma palavra grande ainda não achada ----------
+export function giveHint(root, wg, words, found, size) {
+  const grid = wg.letters;
+  const options = words.filter((w) => w.length >= 6 && !found.has(w)).map((w) => [w, findPath(grid, size, w)]).filter(([, p]) => p);
+  if (!options.length) { toast(root, 'Sem dica agora: tente palavras menores!', 'dup'); return false; }
+  const [w, path] = options[Math.floor(Math.random() * options.length)];
+  wg.mark([path[0]], 'hint-tile');
+  setTimeout(() => wg.mark([], 'hint-tile'), 3500);
+  toast(root, `Dica: começa com ${w[0].toUpperCase()} e tem ${w.length} letras`, 'good');
+  return true;
 }
