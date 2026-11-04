@@ -390,4 +390,47 @@ const mkRoom = (clock, extra = {}) => new Room('ABCD', { now: clock.now, setTime
   assert.equal(det[beto.id].score, Math.max(0, 10 * 10 - 150));
   assert.equal(det[ana.id].score, 1500 - Math.round(room.rounds[0].players[ana.id].seconds) * 2 + 500);
 }
+
+// ---------- Sala com nome e senha, passar anfitrião, revanche, Modo Surpresa ----------
+{
+  const clock = fakeClock();
+  const room = mkRoom(clock);
+  const ana = room.addPlayer({ name: 'Ana', profileId: 'p-ana' });
+  const beto = room.addPlayer({ name: 'Beto' });
+  assert.throws(() => room.setPrivacy(beto.id, { pin: '1234' }), /anfitrião/);
+  room.setPrivacy(ana.id, { name: 'Família Silva', pin: '1234' });
+  assert.equal(room.stateFor(ana.id).pin, '1234', 'anfitrião vê a senha');
+  assert.equal(room.stateFor(beto.id).pin, undefined, 'os outros não veem a senha');
+  assert.equal(room.stateFor(beto.id).locked, true);
+  assert.equal(room.stateFor(beto.id).title, 'Família Silva');
+  assert.throws(() => room.checkPin('', { name: 'Caio' }), /tem senha/);
+  assert.throws(() => room.checkPin('9999', { name: 'Caio' }), /Senha errada/);
+  room.checkPin('1234', { name: 'Caio' });
+  room.checkPin('', { name: 'Ana', profileId: 'p-ana' }); // quem já está na sala volta sem senha
+  room.setPrivacy(ana.id, { name: '', pin: '' });
+  room.checkPin('', { name: 'Caio' });
+  assert.equal(room.stateFor(beto.id).locked, false);
+  // passar o anfitrião
+  room.setHost(ana.id, beto.id);
+  assert.equal(room.hostId, beto.id);
+  assert.throws(() => room.setHost(ana.id, ana.id), /anfitrião/);
+  // Modo Surpresa: cada rodada sorteia um modo da lista, sem repetir o anterior
+  room.setOptions(beto.id, { mode: 'grupo-surpresa', rounds: 3, seconds: 60 });
+  room.start(beto.id);
+  const seen = [];
+  for (let k = 0; k < 3; k++) {
+    seen.push(room.subMode);
+    assert.ok(room.subMode && room.subMode !== 'grupo-surpresa');
+    clock.advance(3500 + 60 * 1000 + 500);
+    if (room.phase === 'reveal') room.next(beto.id);
+  }
+  assert.equal(room.phase, 'final');
+  for (let k = 1; k < seen.length; k++) assert.notEqual(seen[k], seen[k - 1], 'não repete o modo da rodada anterior');
+  // "quero revanche"
+  room.wantRematch(ana.id, true);
+  assert.deepEqual(room.stateFor(beto.id).rematchWants, [ana.id]);
+  room.rematch(beto.id);
+  assert.equal(room.phase, 'lobby');
+  assert.deepEqual(room.wants, []);
+}
 console.log('ok multi');

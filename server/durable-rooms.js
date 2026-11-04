@@ -128,11 +128,14 @@ export async function handleMulti(sql, store, { session, msg }, now = Date.now()
   const save = async (r) => {
     await advanceRoom(r, store, now);
     const meta = roomMeta(r);
-    const [row] = await sql`INSERT INTO rooms (code, state, updated_at, version, deadline, final_pending, connected, player_ids)
+    // pg_notify avisa (ao confirmar a transação) as outras instâncias que escutam: elas
+    // consultam a sala na hora em vez de esperar a próxima consulta periódica
+    const [row] = await sql`WITH up AS (INSERT INTO rooms (code, state, updated_at, version, deadline, final_pending, connected, player_ids)
       VALUES (${r.code}, ${sql.json(snapshotRoom(r))}, ${now}, 1, ${meta.deadline}, ${meta.finalPending}, ${meta.connected}, ${meta.ids})
       ON CONFLICT(code) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at, version = rooms.version + 1,
         deadline = excluded.deadline, final_pending = excluded.final_pending, connected = excluded.connected, player_ids = excluded.player_ids
-      RETURNING version`;
+      RETURNING version)
+      SELECT version, pg_notify('trama_room', ${r.code}) FROM up`;
     if (r === room) version = Number(row.version);
   };
   let room = await load(conn.code);

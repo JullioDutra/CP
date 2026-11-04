@@ -92,9 +92,10 @@ loadTestDict();
   assert.equal(isWord(events[0].w), true);
 }
 // ---------- Grade Combo, Letra da Vez e Chuva de Letras (solo) ----------
-for (const kind of ['combo', 'letra', 'chuva']) {
-  const seed = 555 + kind.length;
-  const setup = setupGradeVariant(seed, kind);
+for (const [kind, size] of [['combo', 5], ['letra', 5], ['chuva', 5], ['combo', 4], ['chuva', 6], ['letra', 6]]) {
+  const seed = 555 + kind.length + size;
+  const setup = setupGradeVariant(seed, kind, size);
+  assert.equal(setup.grid.length, size * size, `${kind} ${size}×${size}`);
   const st = {};
   const events = [];
   const found = new Set();
@@ -109,11 +110,13 @@ for (const kind of ['combo', 'letra', 'chuva']) {
     score += variantPoints(setup, kind, w, path, t, st).pts;
     events.push({ w, path, t });
   }
-  const r = replayGradeVariant(seed, kind, { events }, 200);
+  const r = replayGradeVariant(seed, kind, { events }, 200, size);
   assert.equal(r.score, score, `${kind}: servidor chega aos mesmos pontos`);
   assert.equal(r.words, found.size);
   assert.ok(score > found.size, `${kind}: teve multiplicador`);
   // trapaça: tempo além do medido pelo servidor não vale
-  assert.ok(replayGradeVariant(seed, kind, { events }, 30).score < score, `${kind}: relógio do servidor limita`);
+  assert.ok(replayGradeVariant(seed, kind, { events }, 30, size).score < score, `${kind}: relógio do servidor limita`);
 }
+assert.equal(replayGradeVariant(1, 'combo', { events: [] }, 200, 4).score, 0);
+assert.equal(setupGradeVariant(1, 'combo', '9').size, 5, 'tamanho inválido vira 5×5');
 console.log('ok solo-verify');

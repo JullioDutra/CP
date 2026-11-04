@@ -35,7 +35,7 @@ const server = http.createServer(async (req, res) => {
       const code = share[1].toUpperCase();
       const info = await backend({ action: 'room', code }).catch(() => null);
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(sharePage(code, info, `https://${req.headers.host}`));
+      res.end(sharePage(code, info, `https://${req.headers.host}`, url.searchParams.get('p')));
       return;
     }
     if (url.pathname.startsWith('/api/')) {
@@ -75,6 +75,21 @@ setInterval(() => {
   backend({ action: 'metrics', rows }).catch(() => {});
 }, 60000).unref?.();
 
+// ---------- aviso instantâneo (LISTEN/NOTIFY) ----------
+// Com uma conexão direta ao Postgres (sem pooler), esta instância escuta 'trama_room': quando
+// qualquer instância grava uma sala, os celulares dela aqui consultam na hora. A consulta
+// periódica continua como reserva, só que mais espaçada.
+const LISTEN_URL = inProcess ? process.env.DATABASE_URL_UNPOOLED || process.env.POSTGRES_URL_NON_POOLING : null;
+const watchers = new Map(); // código da sala -> Set(função que consulta já)
+let listening = false;
+if (LISTEN_URL && process.env.TRAMA_LISTEN !== '0') {
+  import('postgres').then(({ default: postgres }) => {
+    const pg = postgres(LISTEN_URL, { max: 1, idle_timeout: 0, connect_timeout: 10, onnotice: () => {} });
+    return pg.listen('trama_room', (code) => { for (const wake of watchers.get(code) || []) wake(); },
+      () => { listening = true; }); // chamado também ao reconectar
+  }).catch((e) => { listening = false; console.error('[listen]', e.message); });
+}
+
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Falhas passageiras do banco (conexões cheias, timeout): tenta de novo antes de desistir.
@@ -90,6 +105,14 @@ wss.on('connection', (ws) => {
   const session = randomUUID();
   let queue = Promise.resolve(), queued = 0, closed = false, timer, failures = 0, phase = 'lobby';
   let version = null, since = 0; // versão da sala que este celular já tem e última reação entregue
+  let roomCode = null;
+  const wake = () => { if (closed) return; if (queued) { setTimeout(wake, 150); return; } clearTimeout(timer); poll(); };
+  const watch = (code) => {
+    if (code === roomCode) return;
+    if (roomCode) watchers.get(roomCode)?.delete(wake);
+    roomCode = code || null;
+    if (roomCode) { if (!watchers.has(roomCode)) watchers.set(roomCode, new Set()); watchers.get(roomCode).add(wake); }
+  };
   const send = (message) => { if (ws.readyState === 1) ws.send(JSON.stringify(message)); };
   const run = (msg) => {
     if (queued >= 24) { send({ t: 'error', message: 'Devagar!' }); return; }
@@ -104,6 +127,7 @@ wss.on('connection', (ws) => {
       for (const message of messages) {
         if (message.t === 'state') {
           if (message.state?.phase) phase = message.state.phase;
+          if (message.state?.code) watch(message.state.code);
           if (message.v != null) version = message.v;
           delete message.v;
         }
@@ -127,14 +151,15 @@ wss.on('connection', (ws) => {
     if (!msg || typeof msg !== 'object' || !['create','join','quick','resume','watch','ready','options','start','next','rematch','want','host','privacy','act','react','leave','ping'].includes(msg.t)) return;
     run(msg);
   });
-  // durante a rodada consulta a cada 1 s; no saguão/resultados, a cada 2,5 s (menos carga no banco)
-  const pollEvery = () => (phase === 'playing' || phase === 'countdown' ? 1000 : 2500) + (failures ? Math.min(4000, 1000 * failures) : 0);
+  // durante a rodada consulta a cada 1 s; no saguão/resultados, a cada 2,5 s (menos carga no banco).
+  // Com o aviso instantâneo ligado, a consulta é só reserva (e para o relógio da rodada).
+  const pollEvery = () => (phase === 'playing' || phase === 'countdown' ? (listening ? 1500 : 1000) : (listening ? 5000 : 2500)) + (failures ? Math.min(4000, 1000 * failures) : 0);
   const poll = async () => { if (closed) return; if (!queued) await run({ t: 'poll', v: version, since }); if (!closed) timer = setTimeout(poll, pollEvery()); };
   timer = setTimeout(poll, 1000);
   // a função da Vercel vive no máximo 300 s: aos 240 s o celular abre outra conexão e volta
   // para a sala sozinho (sem aviso de "reconectando")
   const rotate = setTimeout(() => send({ t: 'rotate' }), Number(process.env.TRAMA_ROTATE_MS) || 240000);
-  ws.on('close', () => { closed = true; clearTimeout(timer); clearTimeout(rotate); run({ t: 'disconnect' }); });
+  ws.on('close', () => { closed = true; clearTimeout(timer); clearTimeout(rotate); watch(null); run({ t: 'disconnect' }); });
 });
 export default server;
 

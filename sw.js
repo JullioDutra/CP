@@ -1,6 +1,6 @@
 // Service worker do Trama: guarda o jogo para abrir rápido e jogar os modos solo sem internet.
 // Partidas em grupo, ranking e IA continuam precisando do servidor (não são guardados).
-const VERSION = 'trama-v10';
+const VERSION = 'trama-v11';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'css/style.css',
   'js/main.js', 'js/core/ui.js', 'js/core/dict.js', 'js/core/letters.js', 'js/core/rng.js', 'js/core/wordgrid.js',

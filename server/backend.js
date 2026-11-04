@@ -22,9 +22,9 @@ export function createBackend({ db, verifier }) {
       if (input.action === 'multi') return await handleMulti(sql, store, input);
       if (input.action === 'metrics') { await store.addMetrics(Array.isArray(input.rows) ? input.rows : []); return { ok: true }; }
       if (input.action === 'room') {
-        const [row] = await sql`SELECT state->'options'->>'mode' AS mode, state->>'phase' AS phase, jsonb_array_length(COALESCE(state->'players'->'__map', '[]'::jsonb)) AS players
+        const [row] = await sql`SELECT state->'options'->>'mode' AS mode, state->>'phase' AS phase, state->>'title' AS title, jsonb_array_length(COALESCE(state->'players'->'__map', '[]'::jsonb)) AS players
           FROM rooms WHERE code = ${String(input.code || '').toUpperCase().slice(0, 8)}`;
-        return row ? { mode: row.mode, phase: row.phase, players: Number(row.players) } : null;
+        return row ? { mode: row.mode, phase: row.phase, players: Number(row.players), title: row.title || null } : null;
       }
       if (input.action !== 'api') throw new Error('Invalid action');
       const url = new URL(input.path, 'https://trama.invalid');

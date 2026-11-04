@@ -74,12 +74,15 @@ const modeOf = (s = state) => effectiveMode(s.options.mode, s.subMode);
 const playerById = (id) => state?.players.find((p) => p.id === id);
 const hueOf = (id) => PLAYER_HUES[(playerById(id)?.hue ?? 0) % PLAYER_HUES.length];
 // link curto da sala: /s/ABCD mostra uma prévia bonita no WhatsApp e leva direto para o jogo
-const joinLink = (code) => `${location.origin}/s/${code}`;
+// sala com senha: o link do anfitrião já leva a senha (?p=1234) para quem recebe entrar direto
+const joinLink = (code, pin) => `${location.origin}/s/${code}${pin ? `?p=${pin}` : ''}`;
+let lastJoin = null; // código da última tentativa de entrar (para voltar com ele se der erro)
 
 function setUrl(params) {
   const url = new URL(location.href);
   url.searchParams.delete('sala');
   url.searchParams.delete('tela');
+  url.searchParams.delete('senha');
   for (const [k, v] of Object.entries(params || {})) url.searchParams.set(k, v);
   history.replaceState(null, '', url);
 }
@@ -87,6 +90,7 @@ function setUrl(params) {
 export function roomCodeFromUrl() {
   return (new URLSearchParams(location.search).get('sala') || '').toUpperCase().slice(0, 4);
 }
+const pinFromUrl = () => (new URLSearchParams(location.search).get('senha') || '').replace(/\D/g, '').slice(0, 4);
 export function tvFromUrl() {
   const v = new URLSearchParams(location.search).get('tela');
   return v == null ? null : v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
@@ -132,7 +136,7 @@ function onMessage(msg) {
   } else if (msg.t === 'error') {
     if (root?.isConnected) toast(root, msg.message, 'bad');
     else if (store.get(SESSION_KEY)?.tv || tvFromUrl() != null) showTvHome(msg.message);
-    else showHome({ error: msg.message });
+    else showHome({ code: lastJoin || '', error: msg.message, needPin: /senha/i.test(msg.message || '') });
   } else if (msg.t === 'expired') {
     store.set(SESSION_KEY, null);
     forgetLastRoom();
@@ -208,7 +212,7 @@ function showConnecting(text = 'Conectando à sala…') {
   ctx.screen(h('p', { class: 'loading' }, text));
 }
 
-function showHome({ code = '', error = '', arena = false, auto = null } = {}) {
+function showHome({ code = '', error = '', arena = false, auto = null, needPin = false } = {}) {
   state = null;
   view = null;
   let avatar = getAvatar();
@@ -217,6 +221,10 @@ function showHome({ code = '', error = '', arena = false, auto = null } = {}) {
   const codeInput = h('input', { id: 'mh-code', type: 'text', maxlength: 4, placeholder: 'ABCD', value: code, class: 'code-input', autocapitalize: 'characters', autocomplete: 'off', 'aria-label': 'Código da sala' });
   codeInput.addEventListener('input', () => (codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z]/g, '')));
   const errEl = h('p', { class: 'form-error' }, error);
+  const urlPin = pinFromUrl();
+  const pinInput = h('input', { type: 'text', inputmode: 'numeric', maxlength: 4, placeholder: 'Senha', value: urlPin, class: 'pin-input', autocomplete: 'off', 'aria-label': 'Senha da sala (4 números)' });
+  pinInput.addEventListener('input', () => (pinInput.value = pinInput.value.replace(/\D/g, '')));
+  const pinRow = h('label', { class: `pin-row ${needPin ? '' : 'hidden'}` }, icon('lock', 'tiny'), h('span', {}, 'Senha da sala'), pinInput);
   const avatarBtn = h('button', { type: 'button', class: 'avatar-current', 'aria-label': 'Trocar avatar', title: 'Trocar avatar' }, avatar);
   const avatars = AVATARS.map((a) =>
     h('button', {
@@ -237,15 +245,16 @@ function showHome({ code = '', error = '', arena = false, auto = null } = {}) {
     if (!name) { errEl.textContent = 'Digite seu nome.'; nameInput.focus(); return; }
     if (action.t === 'join' && action.code.length !== 4) { errEl.textContent = 'O código da sala tem 4 letras.'; codeInput.focus(); return; }
     store.set(SESSION_KEY, null);
+    lastJoin = action.t === 'join' ? action.code : null;
     showConnecting(action.t === 'join' ? `Entrando na sala ${action.code}…` : 'Criando a sala…');
     // perfil sem login: junta as partidas no ranking global e nas estatísticas
     const prof = await saveIdentity(name, avatar);
     ensureNet((err) => showHome({ code: codeInput.value, error: err })).send({ ...action, name, avatar, profile: prof?.token });
   }
-  const join = () => go({ t: 'join', code: codeInput.value });
+  const join = () => go({ t: 'join', code: codeInput.value, pin: pinInput.value || urlPin || undefined });
 
   // quem já tem nome e veio do início com um código (ou "Criar sala") vai direto
-  if (auto && getPlayerName() && !error) { auto === 'join' && code ? join() : go({ t: 'create' }); return; }
+  if (auto && getPlayerName() && !error && !needPin) { auto === 'join' && code ? join() : go({ t: 'create' }); return; }
 
   const who = h('div', { class: 'who' },
     h('p', { class: 'step-label' }, 'Você'),
@@ -255,7 +264,8 @@ function showHome({ code = '', error = '', arena = false, auto = null } = {}) {
   const joinCard = h('form', { class: `choice join ${invited ? 'invited' : ''}`, onsubmit: (e) => { e.preventDefault(); join(); } },
     h('div', { class: 'choice-head' }, icon('enter'), h('h3', {}, invited ? `Convite para a sala ${code}` : 'Entrar numa sala')),
     h('p', { class: 'hint' }, invited ? 'Confira seu nome e toque em Entrar.' : 'Digite o código de 4 letras que seu amigo mandou.'),
-    h('div', { class: 'join-row' }, codeInput, h('button', { class: 'btn', type: 'submit' }, 'Entrar')));
+    h('div', { class: 'join-row' }, codeInput, h('button', { class: 'btn', type: 'submit' }, 'Entrar')),
+    pinRow);
   const createCard = h('div', { class: 'choice create' },
     h('div', { class: 'choice-head' }, icon('plus'), h('h3', {}, 'Criar sala nova')),
     h('p', { class: 'hint' }, 'Você escolhe o modo e manda o link para os amigos.'),
@@ -273,6 +283,7 @@ function showHome({ code = '', error = '', arena = false, auto = null } = {}) {
         h('button', { class: 'link-btn', type: 'button', onclick: () => go({ t: 'quick' }) }, icon('zap'), 'Arena Pública: jogar com desconhecidos'),
         h('a', { class: 'link-btn', href: '?tela=1', onclick: (e) => { e.preventDefault(); setUrl({ tela: '1' }); openTv(); } }, icon('tv'), 'Vai jogar na TV? Abrir o Telão')))
   );
+  if (needPin) { pinInput.focus(); return; }
   if (invited) nameInput.value ? codeInput.closest('form').querySelector('button[type=submit]').focus() : nameInput.focus();
 }
 
@@ -375,7 +386,7 @@ function roomHeader() {
     { class: 'topbar room-top' },
     h('button', { class: 'btn ghost small', onclick: () => { if (tv || state.phase === 'lobby' || confirm('Sair da sala?')) leaveRoom(); } }, tv ? ['Fechar telão'] : [icon('back'), 'Sair']),
     h('span', { class: 'topbar-title' }, modeIcon(modeOf().id, 'tiny'), modeOf().name),
-    h('span', { class: 'room-code-small' }, 'Sala ', h('strong', {}, state.code)),
+    h('span', { class: 'room-code-small' }, state.locked ? icon('lock', 'tiny') : '', state.title ? h('strong', { class: 'room-title' }, state.title) : ['Sala ', h('strong', {}, state.code)]),
     !tv ? h('a', { class: 'btn ghost small', href: `?tela=${state.code}`, target: '_blank', rel: 'noopener', title: 'Abrir o telão em outra aba/tela', 'aria-label': 'Abrir o telão' }, icon('tv')) : '',
     muteButton(h)
   );
@@ -476,8 +487,29 @@ function arenaLobby(s, el) {
 }
 
 // Convite: mandar o link da sala pelo WhatsApp, pelo menu do celular, copiar ou QR.
-function shareBox(code, link, mode) {
-  const text = `Bora jogar Trama comigo? ${mode ? `${mode.name} · ` : ''}sala ${code}: ${link}`;
+// Anfitrião: dar nome à sala e (opcional) uma senha de 4 números.
+function privacyBox(s) {
+  const name = h('input', { type: 'text', maxlength: 24, placeholder: 'Nome da sala (opcional)', value: s.title || '', 'aria-label': 'Nome da sala' });
+  const pin = h('input', { type: 'text', inputmode: 'numeric', maxlength: 4, placeholder: '1234', value: s.pin || '', class: 'pin-input', 'aria-label': 'Senha (4 números)' });
+  pin.addEventListener('input', () => (pin.value = pin.value.replace(/\D/g, '')));
+  const save = (e) => {
+    e.preventDefault();
+    if (pin.value && pin.value.length !== 4) { toast(root, 'A senha tem 4 números.', 'dup'); return; }
+    net.send({ t: 'privacy', name: name.value.trim(), pin: pin.value });
+    toast(root, pin.value ? 'Sala trancada com senha.' : 'Sala salva.', 'good');
+  };
+  return h('details', { class: 'privacy-box', open: !!(s.title || s.pin) || undefined },
+    h('summary', {}, icon('lock', 'tiny'), ' Nome e senha da sala'),
+    h('form', { class: 'privacy-form', onsubmit: save },
+      name,
+      h('div', { class: 'privacy-row' }, h('label', {}, h('span', {}, 'Senha'), pin),
+        h('button', { class: 'btn small', type: 'submit' }, 'Salvar'),
+        s.pin ? h('button', { class: 'btn ghost small', type: 'button', onclick: () => { net.send({ t: 'privacy', name: name.value.trim(), pin: '' }); toast(root, 'Senha removida.', 'good'); } }, 'Tirar senha') : ''),
+      h('p', { class: 'hint' }, 'Com senha, só entra quem tiver o link do anfitrião ou digitar a senha. Quem já está na sala volta sem senha.')));
+}
+
+function shareBox(code, link, mode, title) {
+  const text = `Bora jogar Trama comigo? ${title ? `“${title}” · ` : ''}${mode ? `${mode.name} · ` : ''}sala ${code}: ${link}`;
   const qr = h('img', { class: 'qr share-qr hidden', alt: `QR code para entrar na sala ${code}` });
   return h('div', { class: 'share-box' },
     h('a', { class: 'link-text', href: link, onclick: (e) => { e.preventDefault(); copy(link); } }, link.replace(/^https?:\/\//, '')),
@@ -498,7 +530,7 @@ function lobbyView() {
     update(s) {
       if (s.public) { arenaLobby(s, el); return; }
       const host = isHost();
-      const link = joinLink(s.code);
+      const link = joinLink(s.code, s.pin);
       const mode = modeOf(s);
       const readyCount = s.players.filter((p) => p.ready || p.id === s.hostId).length;
       const opt = (key, spec) =>
@@ -511,9 +543,12 @@ function lobbyView() {
       const modes = Object.values(MULTI_MODES);
       el.replaceChildren(
         h('div', { class: 'card code-card' },
+          s.title ? h('h2', { class: 'room-name' }, s.title) : '',
           h('p', {}, 'Código da sala'),
           h('div', { class: 'room-code' }, s.code),
-          shareBox(s.code, link, mode)),
+          s.locked ? h('p', { class: 'hint lock-hint' }, icon('lock', 'inline'), s.pin ? ` Senha: ${s.pin} · o link abaixo já entra com ela` : ' Sala com senha') : '',
+          shareBox(s.code, link, mode, s.title),
+          host ? privacyBox(s) : ''),
         h('div', { class: 'lobby-grid' },
           h('div', { class: 'card' },
             h('h3', {}, `Jogadores (${s.players.length})`),

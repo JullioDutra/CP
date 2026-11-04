@@ -41,7 +41,7 @@ const server = http.createServer(async (req, res) => {
       const code = share[1].toUpperCase();
       const r = manager.rooms.get(code);
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(sharePage(code, r ? { mode: r.options.mode, phase: r.phase, players: r.players.size } : null, `http://${req.headers.host}`));
+      res.end(sharePage(code, r ? { mode: r.options.mode, phase: r.phase, players: r.players.size, title: r.title } : null, `http://${req.headers.host}`, url.searchParams.get('p')));
       return;
     }
     const rel = publicPath(url.pathname);
