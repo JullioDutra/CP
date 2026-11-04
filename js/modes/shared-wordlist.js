@@ -3,6 +3,7 @@ import { h, toast } from '../core/ui.js';
 import { isWord } from '../core/dict.js';
 import { checkWord } from '../core/verify.js';
 import { wordPoints, sortMissed } from '../core/letters.js';
+import { showWordPath } from '../core/wordpath.js';
 
 export function foundPanel() {
   const list = h('ul', { class: 'found' });
@@ -18,14 +19,18 @@ export function foundPanel() {
   };
 }
 
-export function missedWords(all, found, limit = 40) {
+// grids/size: com a grade, cada palavra vira um botão que mostra onde ela estava.
+export function missedWords(all, found, limit = 40, grids = null, size = null) {
   const missed = sortMissed(all.filter((w) => !found.has(w)));
   if (!missed.length) return h('p', {}, 'Você encontrou todas as palavras!');
+  const list = missed.slice(0, limit);
   return h(
     'div',
     { class: 'missed' },
-    h('h4', {}, 'Algumas palavras que ficaram de fora:'),
-    h('p', {}, missed.slice(0, limit).map((w) => `${w.toUpperCase()} (${wordPoints(w)})`).join(' · '))
+    h('h4', {}, grids ? 'Algumas palavras que ficaram de fora (toque para ver onde estavam):' : 'Algumas palavras que ficaram de fora:'),
+    grids
+      ? h('div', { class: 'wchips' }, list.map((w) => h('button', { type: 'button', class: 'wchip missed-chip', onclick: () => showWordPath(w, grids, size, { pts: wordPoints(w) }) }, w.toUpperCase(), h('small', {}, `+${wordPoints(w)}`))))
+      : h('p', {}, list.map((w) => `${w.toUpperCase()} (${wordPoints(w)})`).join(' · '))
   );
 }
 

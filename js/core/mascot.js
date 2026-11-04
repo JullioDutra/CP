@@ -15,6 +15,7 @@ const LINES = {
   mult: ['Multiplicou! +{pts}', 'Pontos em dobro, que delícia!', 'Olha o bônus aí!'],
   combo: ['Combo de {combo}! Não para!', '{combo} seguidas! Pegando fogo!', 'Que ritmo! Combo {combo}!'],
   hot: ['Agora a letra quente é {letter}!', 'Procura palavras com {letter}!', '{letter} vale o dobro agora!'],
+  rain: ['Choveu letra nova!', 'Olha a chuva! Letras novas valem ×2!', 'Grade nova no pedaço!'],
   bad: ['Hmm, essa não vale…', 'Quase!', 'Tenta outra!', 'Essa eu não conheço.'],
   time: ['Corre! Últimos segundos!', 'Rápido, rápido!', 'O tempo tá acabando!'],
   win: ['Você venceu! Quero um autógrafo!', 'Campeão! Que partida!', 'Vitória! Eu sabia!'],
@@ -23,10 +24,10 @@ const LINES = {
   record: ['Novo recorde! Vou pendurar na geladeira!', 'Recorde batido! Que orgulho!'],
   end: ['Fim de partida! Bora de novo?', 'Mandou bem!'],
 };
-const MOOD = { start: 'happy', word: 'happy', big: 'wow', mult: 'wow', combo: 'wow', hot: 'happy', bad: 'sad', time: 'nervous', win: 'wow', lose: 'sad', round: 'happy', record: 'wow', end: 'happy' };
+const MOOD = { start: 'happy', word: 'happy', big: 'wow', mult: 'wow', combo: 'wow', hot: 'happy', rain: 'wow', bad: 'sad', time: 'nervous', win: 'wow', lose: 'sad', round: 'happy', record: 'wow', end: 'happy' };
 // chance de comentar (para não falar o tempo todo) e se pode interromper a fala atual
 const CHANCE = { word: 0.18, bad: 0.35, big: 0.8, mult: 0.7 };
-const URGENT = new Set(['win', 'lose', 'record', 'time', 'hot', 'combo', 'start']);
+const URGENT = new Set(['win', 'lose', 'record', 'time', 'hot', 'combo', 'start', 'rain']);
 
 export const mascotEnabled = () => enabled;
 export function setMascotEnabled(on) {

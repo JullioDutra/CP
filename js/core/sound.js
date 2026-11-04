@@ -36,6 +36,8 @@ const SOUNDS = {
   big: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.06, 0.16, { vol: 0.13 })); },
   bad: () => tone(180, 0, 0.18, { type: 'square', vol: 0.06, slide: 0.7 }),
   dup: () => { tone(440, 0, 0.08, { type: 'triangle' }); tone(440, 0.1, 0.08, { type: 'triangle' }); },
+  // Chuva de Letras: gotas descendo
+  rain: () => { [1320, 1100, 990, 1180, 880].forEach((f, i) => tone(f, i * 0.06, 0.07, { type: 'sine', vol: 0.07, slide: 0.6 })); },
   tick: () => tone(1200, 0, 0.04, { type: 'square', vol: 0.04 }),
   // fim de tempo: batida grave + bipe agudo (mais dramático)
   alarm: () => { tone(110, 0, 0.18, { type: 'sine', vol: 0.22, slide: 0.6 }); tone(1480, 0.02, 0.09, { type: 'square', vol: 0.05 }); },

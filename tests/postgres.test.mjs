@@ -103,6 +103,16 @@ out = await multi(s1, { t: 'act', a: 'submit', rid: 1, word: words[0] }, T + 100
 assert.equal(out.find((x) => x.t === 'res').result.ok, true);
 out = await multi(s2, { t: 'act', a: 'submit', rid: 1, word: words[0] }, T + 1500);
 assert.equal(out.find((x) => x.t === 'res').result.ok, true, 'repetida também vale');
+// consulta rápida com versão: sem mudança, resposta vazia; depois de uma jogada, estado novo
+{
+  const first = await multi(s2, { t: 'poll' }, T + 1600);
+  const st = first.find((x) => x.t === 'state');
+  assert.ok(st.v > 0, 'estado traz a versão');
+  assert.deepEqual(await multi(s2, { t: 'poll', v: st.v }, T + 1700), [], 'nada mudou: resposta vazia');
+  await multi(s1, { t: 'act', a: 'submit', rid: 2, word: words[1] }, T + 1750);
+  const after = await multi(s2, { t: 'poll', v: st.v }, T + 1800);
+  assert.ok(after.find((x) => x.t === 'state')?.v > st.v, 'mudou: manda o estado novo');
+}
 // reconexão: Beto volta com o token
 out = await multi(randomUUID(), { t: 'resume', code, id: beto.id, token: beto.token }, T + 2000);
 assert.ok(out.find((x) => x.t === 'joined'));

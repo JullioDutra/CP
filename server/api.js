@@ -7,13 +7,15 @@ import { makeGrid } from '../js/core/letters.js';
 import { SOLO_RANKED, MIN_WORDS, dailyPuzzle, scoreWords } from '../js/core/solo.js';
 import { cleanName } from './room.js';
 import { seasonOf } from '../js/core/leagues.js';
-import { newSeed, setupWordSearch, scoreWordSearch, setupSudoku, scoreSudokuLog, replaySurvival, WS_TIME } from '../js/core/solo-verify.js';
+import { newSeed, setupWordSearch, scoreWordSearch, setupSudoku, scoreSudokuLog, replaySurvival, replayGradeVariant, WS_TIME } from '../js/core/solo-verify.js';
 
 // Confere uma partida com semente (refaz o jogo no servidor) e devolve os pontos oficiais.
 function verifySeeded(mode, data, log, elapsedSec) {
   if (mode === 'classico-cacapalavras') return scoreWordSearch(setupWordSearch(data.seed, data.variant), log, WS_TIME - elapsedSec + 3);
   if (mode === 'classico-sudoku') return scoreSudokuLog(setupSudoku(data.seed, data.variant), data.variant, log, elapsedSec);
   if (mode === 'novo-sobrevivencia') return replaySurvival(data.seed, log, elapsedSec + 3);
+  const variant = { 'novo-combo': 'combo', 'novo-letra': 'letra', 'novo-chuva': 'chuva' }[mode];
+  if (variant) return replayGradeVariant(data.seed, variant, log, elapsedSec + 3);
   return { score: 0, words: 0, longest: null };
 }
 

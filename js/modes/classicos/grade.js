@@ -78,7 +78,7 @@ export default {
         revealItems: items,
         summary: [['Palavras', found.size], ['Maior encontrada', longestWord([...found], false)?.toUpperCase() || '—'], ['Maior da grade', longestWord(words)?.toUpperCase() || '—']],
         longest: { found: longestWord([...found], false), possible: longestWord(words) },
-        extra: missedWords(words, found),
+        extra: missedWords(words, found, 40, grid, size),
         online: online && { ticket: online.ticket, palavras: [...found].map((w) => ({ w, path: paths[w] })) },
       });
     }

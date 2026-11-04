@@ -36,7 +36,10 @@ sorteia a grade, controla o relógio, valida as palavras e guarda os rankings.
   na horizontal + vertical, palavras extras valem pontos); arrasto mais livre na grade; **novo tema Claro** (padrão);
   a partida não mostra mais quantas palavras existem; verificação da IA silenciosa (palavra inválida só fica vermelha);
   convite com **link da sala** (WhatsApp, enviar, copiar, QR).
-- ⏭️ Próximo: seção 9 (melhorias).
+- ✅ **Novembro/2026 (2ª parte):** conexão estável com 4+ jogadores (consulta rápida por versão), dicionário limpo
+  com conjugações, Grade Combo, Letra da Vez e Chuva de Letras (em grupo e solo, com ranking global), o Fio,
+  destaques da rodada e "onde estava a palavra".
+- ⏭️ Próximo: seção 10 (plano por seção do jogo).
 
 ---
 
@@ -283,3 +286,77 @@ Em ordem de impacto para deixar o jogo mais divertido e fácil de espalhar.
 - Trocar a consulta a cada 1 s por **Supabase Realtime** (menos chamadas, resposta instantânea).
 - Testes de interface no navegador (Playwright) rodando a cada envio.
 - Painel simples de saúde: salas ativas, partidas por dia, erros.
+
+
+---
+
+## 10. Plano por seção do jogo (novembro/2026)
+
+Prioridade: **A** = próximas semanas · **B** = depois · **C** = quando sobrar tempo.
+Cada seção diz o que já existe e o que falta para ficar mais rápida de entender, mais divertida e mais estável.
+
+### 10.1 Início
+Hoje: chamada "Entrar com código / Criar sala", modos solo em cartões, modos em grupo, rodapé.
+- **A** "Continuar": se o jogador estava numa sala, um cartão no topo leva de volta para ela.
+- **A** Cartão "Desafio do Dia" em destaque com a sequência de dias e quanto falta para o próximo.
+- **B** Mostrar o recorde global de cada modo solo no cartão (hoje é o do aparelho).
+- **B** Primeira visita: um tour de 3 telas (arrastar, pontos, jogar com amigos), com o Fio explicando.
+- **C** Atalho "Jogar de novo o último modo".
+
+### 10.2 Jogar sozinho
+Hoje: 8 modos, todos no ranking global e conferidos pelo servidor.
+- **A** Escolher tamanho da grade (4×4/5×5/6×6) também em Combo, Letra da Vez e Chuva.
+- **A** Treino sem tempo (não vale ranking), para aprender o modo.
+- **B** Metas da partida ("faça uma palavra de 7 letras", "combo ×2") que dão conquistas.
+- **C** Modo "zen": sem relógio, a grade se renova quando acabam as palavras.
+
+### 10.3 Sala com amigos (saguão)
+Hoje: código, link (WhatsApp/compartilhar/QR), escolha de modo, telão, coroa de vitórias seguidas.
+- **A** Prévia bonita do link no WhatsApp (nome da sala, modo e quantos jogadores).
+- **A** "Pronto" automático para quem entra pelo link; o anfitrião vê quem ainda não está pronto.
+- **B** Sorteio de modo ("Roleta") e playlist de modos (cada rodada um modo diferente).
+- **B** Passar o anfitrião para outra pessoa com um toque.
+- **C** Salas com nome e senha para grupos fixos.
+
+### 10.4 Partida
+Hoje: tempo dramático no fim, traço nas letras, pontos subindo, Fio, combos, letra quente, chuva.
+- **A** Mostrar no placar ao vivo uma "faísca" quando alguém acha palavra grande (sem revelar a palavra).
+- **A** Vibração leve no celular ao acertar/errar (opção no perfil).
+- **B** Girar a grade (botão) para enxergar palavras novas sem mudar as letras.
+- **B** Dica paga com tempo: revela a 1ª letra de uma palavra de 6+ letras (−10 s).
+- **C** Tema sonoro por modo (combo com batida mais rápida, chuva com som de chuva).
+
+### 10.5 Resultados
+Hoje: tanques (iguais × únicas), pódio, coroa, maior palavra, destaques que viram, toque na palavra para ver onde estava, toque no tanque para ver as palavras de cada um.
+- **A** Linha do tempo da rodada: quem achou o quê e quando (gráfico simples de pontos × tempo).
+- **A** "Revanche rápida" já com contagem de quem topou (3/5 querem jogar de novo).
+- **B** Cartão de resultado para compartilhar (imagem com placar e maior palavra).
+- **B** Comparar duas pessoas lado a lado (palavras em comum e únicas de cada uma).
+- **C** Replay da rodada no telão, acelerado, com as palavras aparecendo na grade.
+
+### 10.6 Ranking e ligas
+Hoje: global por modo/variante (hoje/semana/sempre), ligas por temporada, ranking do aparelho.
+- **A** Ranking entre amigos: quem jogou na mesma sala entra num grupo com placar da semana.
+- **B** Recompensa visual da temporada (moldura no avatar para os 10 primeiros da liga).
+- **C** Histórico das temporadas passadas.
+
+### 10.7 Perfil
+Hoje: nome e avatar no topo, estatísticas, conquistas com progresso, temas, Fio, código para outro aparelho.
+- **A** Mais conquistas ligadas aos modos novos (combo ×3, 5 letras quentes numa rodada, 3 chuvas aproveitadas).
+- **B** Avatares desbloqueáveis (ganhos com conquistas).
+- **C** Gráfico de evolução (pontos por semana).
+
+### 10.8 Telão
+Hoje: QR, grade grande, placar ao vivo, tanques e pódio; não espelha a tela de ninguém.
+- **A** Animação de entrada de cada jogador (avatar caindo na tela) no saguão.
+- **B** Modo apresentador: o telão narra (texto grande) os destaques ao vivo.
+
+### 10.9 Conexão e desempenho (contínuo)
+Feito: consulta de 1 s só lê a versão da sala (resposta vazia quando nada mudou: ~5 ms), presença gravada a
+cada 5 s, sala compacta, troca de conexão invisível aos 4 min, novas tentativas antes de falhar.
+- **A** Medir em produção: tempo das jogadas e quedas por partida (painel simples a partir do Server-Timing).
+- **A** Jogadas otimistas: a palavra aparece na hora no celular e o servidor só confirma.
+- **B** Trocar a consulta de 1 s por avisos em tempo real (Postgres LISTEN/NOTIFY ou um serviço de realtime),
+  quando o número de salas simultâneas crescer.
+- **B** Cache curto por sala dentro de cada instância da Vercel (várias pessoas da mesma sala na mesma instância
+  dividem uma leitura).

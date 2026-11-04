@@ -63,6 +63,7 @@ async function backendRetry(payload, tries) {
 wss.on('connection', (ws) => {
   const session = randomUUID();
   let queue = Promise.resolve(), queued = 0, closed = false, timer, failures = 0, phase = 'lobby';
+  let version = null, since = 0; // versão da sala que este celular já tem e última reação entregue
   const send = (message) => { if (ws.readyState === 1) ws.send(JSON.stringify(message)); };
   const run = (msg) => {
     if (queued >= 24) { send({ t: 'error', message: 'Devagar!' }); return; }
@@ -72,7 +73,12 @@ wss.on('connection', (ws) => {
       const messages = await backendRetry({ action: 'multi', session, msg }, msg.t === 'poll' ? 1 : 3);
       failures = 0;
       for (const message of messages) {
-        if (message.t === 'state' && message.state?.phase) phase = message.state.phase;
+        if (message.t === 'state') {
+          if (message.state?.phase) phase = message.state.phase;
+          if (message.v != null) version = message.v;
+          delete message.v;
+        }
+        if (message.t === 'reaction') since = Math.max(since, message.at || 0);
         send(message);
       }
     }).catch(e => {
@@ -94,7 +100,7 @@ wss.on('connection', (ws) => {
   });
   // durante a rodada consulta a cada 1 s; no saguão/resultados, a cada 2,5 s (menos carga no banco)
   const pollEvery = () => (phase === 'playing' || phase === 'countdown' ? 1000 : 2500) + (failures ? Math.min(4000, 1000 * failures) : 0);
-  const poll = async () => { if (closed) return; if (!queued) await run({ t: 'poll' }); if (!closed) timer = setTimeout(poll, pollEvery()); };
+  const poll = async () => { if (closed) return; if (!queued) await run({ t: 'poll', v: version, since }); if (!closed) timer = setTimeout(poll, pollEvery()); };
   timer = setTimeout(poll, 1000);
   // a função da Vercel vive no máximo 300 s: aos 240 s o celular abre outra conexão e volta
   // para a sala sozinho (sem aviso de "reconectando")

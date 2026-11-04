@@ -44,6 +44,7 @@ const P = {
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>',
   phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
   palette: '<circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2a10 10 0 0 0 0 20c.93 0 1.5-.75 1.5-1.65 0-.42-.17-.8-.44-1.1-.27-.3-.43-.68-.43-1.1 0-.93.75-1.65 1.65-1.65H16a6 6 0 0 0 6-6c0-4.97-4.48-9-10-9z"/>',
+  rain: '<path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M16 14v6M8 14v6M12 16v6"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
 };
 
@@ -70,7 +71,8 @@ const MODE_GLYPH = {
   'novo-sobrevivencia': 'hourglass', 'novo-diario': 'calendar',
   'grupo-classico': 'grid', 'corrida-cacapalavras': 'search', 'sudoku-duelo': 'sudoku',
   'grupo-bonus': 'gem', 'arena-sobrevivencia': 'hourglass', 'times': 'swords',
-  'grupo-combo': 'flame', 'grupo-letra': 'target',
+  'grupo-combo': 'flame', 'grupo-letra': 'target', 'grupo-chuva': 'rain',
+  'novo-combo': 'flame', 'novo-letra': 'target', 'novo-chuva': 'rain',
 };
 export const modeIcon = (id, cls = '') => icon(MODE_GLYPH[id] || 'grid', cls);
 

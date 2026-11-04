@@ -7,7 +7,7 @@ import { MIX_EXTRA_MIN, MIX_EXTRA_PTS, WS_SIZE } from '../js/core/wordsearch.js'
 import { sudokuScore } from '../js/core/sudoku.js';
 import {
   setupWordSearch, scoreWordSearch, setupSudoku, scoreSudokuLog, setupSurvival, survivalRefill, survivalRenew,
-  replaySurvival, timeGain, SURV_START, SURV_SHUFFLE_COST,
+  replaySurvival, timeGain, SURV_START, SURV_SHUFFLE_COST, setupGradeVariant, variantGrid, variantPoints, replayGradeVariant,
 } from '../js/core/solo-verify.js';
 
 loadTestDict();
@@ -90,5 +90,30 @@ loadTestDict();
   assert.equal(replaySurvival(seed, { events, survived: 99999 }, 99999).score, score + Math.floor(deathAt / 10), 'não dá para sobreviver além da hora em que a vida acaba');
   assert.equal(replaySurvival(seed, { events, survived }, 30).score, score + 3, 'tempo limitado pelo relógio do servidor');
   assert.equal(isWord(events[0].w), true);
+}
+// ---------- Grade Combo, Letra da Vez e Chuva de Letras (solo) ----------
+for (const kind of ['combo', 'letra', 'chuva']) {
+  const seed = 555 + kind.length;
+  const setup = setupGradeVariant(seed, kind);
+  const st = {};
+  const events = [];
+  const found = new Set();
+  let score = 0;
+  // o "celular" acha palavras ao longo de 2 minutos, inclusive depois de chuvas
+  for (let t = 1500; t < 118000; t += kind === 'combo' ? 2500 : 6100) {
+    const grid = variantGrid(setup, t);
+    const w = solve(grid, setup.size).filter((x) => !found.has(x)).sort((a, b) => b.length - a.length)[found.size % 3];
+    if (!w) continue;
+    const path = findPath(grid, setup.size, w);
+    found.add(w);
+    score += variantPoints(setup, kind, w, path, t, st).pts;
+    events.push({ w, path, t });
+  }
+  const r = replayGradeVariant(seed, kind, { events }, 200);
+  assert.equal(r.score, score, `${kind}: servidor chega aos mesmos pontos`);
+  assert.equal(r.words, found.size);
+  assert.ok(score > found.size, `${kind}: teve multiplicador`);
+  // trapaça: tempo além do medido pelo servidor não vale
+  assert.ok(replayGradeVariant(seed, kind, { events }, 30).score < score, `${kind}: relógio do servidor limita`);
 }
 console.log('ok solo-verify');

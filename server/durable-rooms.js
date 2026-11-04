@@ -51,38 +51,59 @@ async function presence(sql, code, now) {
   return online;
 }
 
-// Precisa do caminho completo (travar, avançar, gravar)? Só quando algo muda de verdade.
-function needsWrite(room, online, me, now) {
-  if (room.endsAt != null && room.endsAt + (room.phase === 'playing' ? GRACE_MS : 0) <= now) return true; // prazo vencido
-  if (room.phase === 'final' && !room.finalResult) return true;
-  if (me && !me.connected) return true; // voltou
-  for (const p of room.players.values()) if (p.connected !== online.has(p.id) && p.id !== me?.id) return true; // alguém caiu/voltou
-  if (room.phase === 'playing' && room.game.tick) {
-    // Arena Sobrevivência: só grava se a vida de alguém acabou agora
-    for (const p of room.players.values()) if (p.rs?.alive && p.rs.lifeEndsAt <= now) return true;
+// Resumo gravado junto com a sala: próximo prazo, quem está conectado e quem está na sala.
+// A consulta rápida decide só com isso se precisa do caminho completo.
+export function roomMeta(r) {
+  let deadline = r.endsAt != null ? r.endsAt + (r.phase === 'playing' ? GRACE_MS : 0) : null;
+  // Chuva de Letras: a próxima chuva também é um "prazo" (todos recebem a grade nova)
+  if (r.phase === 'playing' && r.rd?.rain) {
+    const { startedAt, everyMs, drops } = r.rd.rain;
+    const k = Math.max(0, Math.floor((r.now() - startedAt) / everyMs));
+    if (k < drops.length) deadline = Math.min(deadline ?? Infinity, startedAt + (k + 1) * everyMs);
   }
-  return false;
+  if (r.phase === 'playing' && r.game?.tick) {
+    for (const p of r.players.values()) if (p.rs?.alive && p.rs.lifeEndsAt != null) deadline = Math.min(deadline ?? Infinity, p.rs.lifeEndsAt);
+  }
+  const players = [...r.players.values()];
+  return {
+    deadline: Number.isFinite(deadline) ? Math.floor(deadline) : null,
+    finalPending: r.phase === 'final' && !r.finalResult,
+    connected: players.filter((p) => p.connected).map((p) => p.id).join(','),
+    ids: players.map((p) => p.id).join(','),
+  };
 }
+const ids = (s) => (s ? String(s).split(',').filter(Boolean) : []);
+const SEEN_EVERY_MS = 5000; // "ainda estou aqui": grava no máximo a cada 5 s
 
 export async function handleMulti(sql, store, { session, msg }, now = Date.now()) {
   if (!/^[a-f0-9-]{36}$/.test(session || '')) throw new Error('Sessão inválida');
   const m = msg || { t: 'poll' };
-  // Caminho rápido da consulta periódica: só lê (sem trava e sem regravar a sala).
+  // Caminho rápido da consulta periódica: o celular diz qual versão da sala já tem.
+  // Se nada mudou, a resposta é vazia — sem ler o estado, sem travar e sem gravar.
   if (m.t === 'poll') {
-    const [c] = await sql`SELECT c.code, c.player_id, c.is_tv, c.seen, r.state FROM connections c LEFT JOIN rooms r ON r.code = c.code WHERE c.id = ${session}`;
-    if (c?.state) {
-      const room = restoreRoom(c.state);
-      const me = c.is_tv ? null : room.players.get(c.player_id);
-      const online = await presence(sql, room.code, now);
-      if (!c.is_tv) online.add(c.player_id);
-      if (c.is_tv || me) {
-        if (!needsWrite(room, online, me, now)) {
-          await sql`UPDATE connections SET seen = ${now} WHERE id = ${session}`;
-          const out = [];
-          for (const reaction of room.reactions || []) if (reaction.at > Number(c.seen)) out.push({ t: 'reaction', ...reaction });
-          out.push({ t: 'state', state: room.stateFor(c.player_id) });
-          return out;
-        }
+    const v = Number.isFinite(Number(m.v)) ? Number(m.v) : -1;
+    const [c] = await sql`SELECT c.code, c.player_id, c.is_tv, c.seen, r.version, r.deadline, r.final_pending, r.connected, r.player_ids,
+      CASE WHEN r.version <> ${v} THEN r.state END AS state
+      FROM connections c LEFT JOIN rooms r ON r.code = c.code WHERE c.id = ${session}`;
+    if (c && c.version != null) {
+      const connected = new Set(ids(c.connected));
+      let fast = !(c.deadline != null && Number(c.deadline) <= now) && !c.final_pending;
+      if (fast && !c.is_tv && !connected.has(c.player_id)) fast = false; // voltou: marca como conectado
+      const touch = now - Number(c.seen) >= SEEN_EVERY_MS;
+      if (fast && touch) {
+        const online = await presence(sql, c.code, now);
+        if (!c.is_tv) online.add(c.player_id);
+        if (ids(c.player_ids).some((id) => connected.has(id) !== online.has(id))) fast = false; // alguém caiu/voltou
+      }
+      if (fast) {
+        if (touch) await sql`UPDATE connections SET seen = ${now} WHERE id = ${session}`;
+        if (c.state == null) return []; // nada mudou desde a última resposta
+        const room = restoreRoom(c.state);
+        const since = Number(m.since) || Number(c.seen);
+        const out = [];
+        for (const reaction of room.reactions || []) if (reaction.at > since) out.push({ t: 'reaction', ...reaction });
+        out.push({ t: 'state', state: room.stateFor(c.player_id), v: Number(c.version) });
+        return out;
       }
     }
   }
@@ -92,8 +113,9 @@ export async function handleMulti(sql, store, { session, msg }, now = Date.now()
     await sql`DELETE FROM connections WHERE seen < ${now - 86400000}`;
     await sql`DELETE FROM rooms WHERE updated_at < ${now - 86400000}`;
   }
-  await sql`INSERT INTO connections (id, seen) VALUES (${session}, ${now}) ON CONFLICT (id) DO NOTHING`;
-  const [conn] = await sql`SELECT * FROM connections WHERE id = ${session}`;
+  // registra a conexão (se for nova) e já lê o que ela tem, numa ida só ao banco
+  const [conn] = await sql`INSERT INTO connections (id, seen) VALUES (${session}, ${now})
+    ON CONFLICT (id) DO UPDATE SET id = excluded.id RETURNING *`;
   // Trava a sala atual e a sala de destino, sempre na mesma ordem (evita impasse).
   const target = m.t === 'join' || m.t === 'resume' || (m.t === 'watch' && !m.create) ? roomCode(m.code) : null;
   for (const code of [...new Set([conn.code, target].filter(Boolean))].sort()) await lockRoom(sql, code);
@@ -102,10 +124,16 @@ export async function handleMulti(sql, store, { session, msg }, now = Date.now()
     const [row] = await sql`SELECT state FROM rooms WHERE code = ${code || ''}`;
     return row ? restoreRoom(row.state) : null;
   };
+  let version = null;
   const save = async (r) => {
     await advanceRoom(r, store, now);
-    await sql`INSERT INTO rooms (code, state, updated_at) VALUES (${r.code}, ${sql.json(snapshotRoom(r))}, ${now})
-      ON CONFLICT(code) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at`;
+    const meta = roomMeta(r);
+    const [row] = await sql`INSERT INTO rooms (code, state, updated_at, version, deadline, final_pending, connected, player_ids)
+      VALUES (${r.code}, ${sql.json(snapshotRoom(r))}, ${now}, 1, ${meta.deadline}, ${meta.finalPending}, ${meta.connected}, ${meta.ids})
+      ON CONFLICT(code) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at, version = rooms.version + 1,
+        deadline = excluded.deadline, final_pending = excluded.final_pending, connected = excluded.connected, player_ids = excluded.player_ids
+      RETURNING version`;
+    if (r === room) version = Number(row.version);
   };
   let room = await load(conn.code);
   if (room) await advanceRoom(room, store, now);
@@ -202,7 +230,7 @@ export async function handleMulti(sql, store, { session, msg }, now = Date.now()
     }
     await save(room);
     for (const reaction of room.reactions || []) if (reaction.at > Number(conn.seen)) out.push({ t: 'reaction', ...reaction });
-    out.push({ t: 'state', state: room.stateFor(conn.player_id) });
+    out.push({ t: 'state', state: room.stateFor(conn.player_id), v: version });
   }
   await sql`UPDATE connections SET code = ${conn.code}, player_id = ${conn.player_id}, is_tv = ${conn.is_tv}, seen = ${now} WHERE id = ${session}`;
   return out;

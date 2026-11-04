@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { loadTestDict, fakeClock, fakeLlmFetch } from './helpers.mjs';
-import { wordPoints, solve } from '../js/core/letters.js';
+import { wordPoints, solve, findPath } from '../js/core/letters.js';
 import { isWord, isCommon } from '../js/core/dict.js';
 import { hotLetterAt } from '../js/core/multimodes.js';
 import { scoreRound, sanitizeOptions, defaultOptions, sudokuDuelScore, bonusCells, bonusMultiplier } from '../js/core/multimodes.js';
@@ -312,6 +312,32 @@ const mkRoom = (clock, extra = {}) => new Room('ABCD', { now: clock.now, setTime
   if (without) assert.equal(room.act(ana.id, { a: 'submit', word: without }).pts, wordPoints(without), 'sem a letra: normal');
   clock.advance(20000);
   assert.notEqual(hotLetterAt(hot, clock.now()).letter === cur && hot.letters[1] !== cur, true, 'a letra troca a cada 20 s');
+}
+
+// ---------- Chuva de Letras ----------
+{
+  const clock = fakeClock();
+  const room = mkRoom(clock);
+  const ana = room.addPlayer({ name: 'Ana' });
+  room.addPlayer({ name: 'Beto' });
+  room.setOptions(ana.id, { mode: 'grupo-chuva', rounds: 1, seconds: 120, size: 5 });
+  room.start(ana.id);
+  clock.advance(3500);
+  const g0 = room.stateFor(ana.id).play.grid.slice();
+  assert.equal(JSON.stringify(room.stateFor(ana.id).play).includes('drops'), false, 'letras futuras não vão para o celular');
+  clock.advance(20100);
+  const p1 = room.stateFor(ana.id).play;
+  assert.equal(p1.rain.step, 1);
+  assert.ok(p1.rain.fresh.length >= 3);
+  assert.ok(p1.rain.fresh.some((i) => p1.grid[i] !== g0[i]) || p1.rain.fresh.every((i) => p1.grid[i] === g0[i]));
+  const ws = solve(p1.grid, 5);
+  const withFresh = ws.map((w) => [w, findPath(p1.grid, 5, w)]).find(([, path]) => path.some((i) => p1.rain.fresh.includes(i)));
+  if (withFresh) {
+    const r = room.act(ana.id, { a: 'submit', word: withFresh[0], path: withFresh[1] });
+    assert.ok(r.ok);
+    assert.equal(r.pts, wordPoints(withFresh[0]) * 2, 'letra que acabou de cair vale ×2');
+  }
+  assert.ok(room.rd.possible.length > solve(g0, 5).length, 'palavras possíveis de todas as versões da grade');
 }
 
 // ---------- Sudoku Duelo ----------

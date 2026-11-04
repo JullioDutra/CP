@@ -13,6 +13,7 @@ import cacapalavras from './modes/classicos/cacapalavras.js';
 import sudoku from './modes/classicos/sudoku.js';
 import sobrevivencia from './modes/novos/sobrevivencia.js';
 import diario from './modes/novos/diario.js';
+import { comboSolo, letraSolo, chuvaSolo } from './modes/novos/variantes.js';
 import { initMulti, openMulti, openTv, openArena, roomCodeFromUrl, tvFromUrl, multiRankingModes } from './multi/multi.js';
 import { applyTheme } from './core/theme.js';
 import { achievementByKey } from './core/achievements.js';
@@ -26,7 +27,7 @@ import { todayKey } from './core/rng.js';
 import { finishOnline } from './core/online-solo.js';
 
 const CLASSICOS = [grade, cacapalavras, sudoku];
-const NOVOS = [sobrevivencia, diario];
+const NOVOS = [sobrevivencia, diario, comboSolo, letraSolo, chuvaSolo];
 
 const app = document.getElementById('app');
 let cleanup = null;

@@ -156,6 +156,26 @@ export const MULTI_MODES = {
       size: { label: 'Grade', choices: [4, 5, 6], default: 5, format: 'grid' },
     },
   },
+  'grupo-chuva': {
+    id: 'grupo-chuva',
+    game: 'grade',
+    category: 'novo',
+    name: 'Chuva de Letras',
+    icon: '🌧️',
+    short: 'A cada 20 s caem letras novas na grade',
+    rain: true,
+    rules: [
+      'Todos recebem a mesma grade, mas ela muda: a cada 20 s algumas letras caem e trocam de lugar.',
+      'As letras que acabaram de cair brilham: palavra que usa uma delas vale ×2 até a próxima chuva.',
+      'Palavras já achadas continuam valendo, mesmo que sumam da grade.',
+      'Várias pessoas podem achar a mesma palavra: todas ganham os pontos.',
+    ],
+    options: {
+      rounds: { ...ROUNDS, default: 3 },
+      seconds: { label: 'Tempo', choices: [60, 100, 120, 180], default: 120, format: 'time' },
+      size: { label: 'Grade', choices: [4, 5, 6], default: 5, format: 'grid' },
+    },
+  },
   'arena-sobrevivencia': {
     id: 'arena-sobrevivencia',
     game: 'grade',

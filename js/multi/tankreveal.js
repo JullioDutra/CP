@@ -31,7 +31,7 @@ export function buildDrops(r, playerIds) {
   return [...shared, ...unique, ...bonus];
 }
 
-export function createTankReveal({ round, players, totals, you, hueOf, final, onDone }) {
+export function createTankReveal({ round, players, totals, you, hueOf, final, onDone, onPlayer = null }) {
   const ids = players.map((p) => p.id);
   const drops = buildDrops(round, ids);
   const state = Object.fromEntries(players.map((p) => [p.id, { total: (totals[p.id] ?? 0) - (round.scores?.[p.id] ?? 0), shared: 0, unique: 0, words: 0 }]));
@@ -204,6 +204,19 @@ export function createTankReveal({ round, players, totals, you, hueOf, final, on
       h('div', { class: `rc-word ${[...label].length > 16 ? 'xlong' : [...label].length > 10 ? 'long' : ''}` }, label),
       h('div', { class: 'rc-meta' }, h('span', { class: 'rc-pts' }, final ? 'venceu a partida!' : 'lidera a partida!')));
     skipBtn.remove();
+    // depois da animação, cada tanque vira um botão: mostra as palavras daquele jogador
+    if (onPlayer) {
+      for (const p of players) {
+        const el = tanks[p.id].el;
+        el.classList.add('clickable');
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+        el.title = `Ver as palavras de ${p.name}`;
+        el.addEventListener('click', () => onPlayer(p.id));
+        el.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onPlayer(p.id)));
+      }
+      stage.append(h('p', { class: 'hint tr-tip' }, 'Toque num tanque para ver as palavras de cada um.'));
+    }
     play(final ? 'win' : 'end');
     setTimeout(() => onDone?.(), skipped ? 0 : 450);
   }

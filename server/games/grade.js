@@ -1,8 +1,9 @@
 // Jogo de grade de letras: Grade em Grupo, Grade Bônus, Arena Sobrevivência e Times.
 // Palavras repetidas entre jogadores valem pontos normalmente; ser única ou
 // repetida só aparece nas estatísticas do fim da rodada (o "tanque").
-import { makeGrid, findPath, isAdjacent, wordPoints, sortMissed, longestWord, MIN_LETTERS } from '../../js/core/letters.js';
+import { makeGrid, solve, findPath, isAdjacent, wordPoints, sortMissed, longestWord, MIN_LETTERS } from '../../js/core/letters.js';
 import { isWord, normalize } from '../../js/core/dict.js';
+import { makeRain, rainStep, rainGrid, freshCells, rainMult, RAIN } from '../../js/core/rain.js';
 import { scoreRound, bonusCells, bonusMultiplier, SURVIVAL, COMBO, comboMult, HOT, hotLetterAt, hotMult } from '../../js/core/multimodes.js';
 
 const MIN_WORDS = { 4: 40, 5: 90, 6: 150 };
@@ -23,6 +24,16 @@ const game = {
     const { grid, words } = makeGrid(room.rng, size, { minWords: MIN_WORDS[size] || 40, tries: size === 6 ? 25 : 60 });
     const bonus = room.mode.bonus ? bonusCells(room.rng, size) : {};
     room.rd = { grid, size, possible: words, bonus, eliminated: [] };
+    if (room.mode.rain) {
+      const drops = makeRain(room.rng, grid, size, room.options.seconds * 1000);
+      room.rd.rain = { drops, startedAt: room.now(), everyMs: RAIN.everyMs };
+      // palavras possíveis em todas as versões da grade (para "ninguém achou" e "maior da grade")
+      const all = new Set(words);
+      for (let k = 1; k <= drops.length; k++) for (const w of solve(rainGrid(grid, drops, k), size)) all.add(w);
+      room.rd.possible = [...all];
+      // servidor local: avisa os celulares quando a chuva cai (o durável usa o prazo da sala)
+      for (let k = 1; k <= drops.length; k++) room.setTimer(() => room.phase === 'playing' && room.touch(), k * RAIN.everyMs + 50);
+    }
     if (room.mode.hot) {
       // letras quentes: as da grade, em ordem sorteada (as mais frequentes aparecem primeiro)
       const counts = {};
@@ -47,7 +58,12 @@ const game = {
       if (word.length < MIN_LETTERS) return { ok: false, reason: `Mínimo ${MIN_LETTERS} letras`, word };
       if (p.rs.words.includes(word) || p.rs.pending.has(word)) return { ok: false, dup: true, reason: 'Você já achou essa', word };
       if (room.mode.teams && teammates(room, p).some((q) => q.rs.words.includes(word))) return { ok: false, dup: true, reason: 'Seu time já achou essa', word };
-      const path = pathFor(rd, word, msg.path);
+      // Chuva de Letras: vale a grade de agora (ou a anterior, por até 1,5 s depois da chuva)
+      let path = pathFor(rd, word, msg.path, currentGrid(rd, room.now()));
+      if (!path && rd.rain) {
+        const k = rainStep(room.now() - rd.rain.startedAt);
+        if (k > 0 && room.now() - (rd.rain.startedAt + k * RAIN.everyMs) < 1500) path = pathFor(rd, word, msg.path, rainGrid(rd.grid, rd.rain.drops, k - 1));
+      }
       if (!path) return { ok: false, reason: 'Essa palavra não está na grade', word };
 
       if (isWord(word)) return accept(room, p, word, path, false);
@@ -88,7 +104,12 @@ const game = {
 
   publicFor(room, p) {
     const rd = room.rd;
-    const out = { grid: rd.grid, size: rd.size, bonus: rd.bonus };
+    const out = { grid: currentGrid(rd, room.now()), size: rd.size, bonus: rd.bonus };
+    if (rd.rain) {
+      // só a grade de agora e quando cai a próxima chuva (as letras futuras não vão para o celular)
+      const k = rainStep(room.now() - rd.rain.startedAt);
+      out.rain = { step: k, fresh: freshCells(rd.rain.drops, k), nextAt: k < rd.rain.drops.length ? rd.rain.startedAt + (k + 1) * rd.rain.everyMs : null };
+    }
     if (rd.hot) out.hot = rd.hot;
     if (p) {
       out.myWords = p.rs.words;
@@ -158,6 +179,8 @@ const game = {
       totals,
       longest,
       longestPossible: longestWord(rd.possible),
+      // Chuva de Letras: todas as versões da grade (para mostrar onde estava cada palavra)
+      grids: rd.rain ? Array.from({ length: rd.rain.drops.length + 1 }, (_, k) => rainGrid(rd.grid, rd.rain.drops, k)) : undefined,
       extras,
       placement,
       missed: sortMissed(rd.possible.filter((w) => !allFound.has(w))).slice(0, 30),
@@ -189,6 +212,7 @@ function accept(room, p, word, path, viaAi) {
     hot = hotLetterAt(room.rd.hot, t)?.letter || null;
     mult *= hotMult(word, hot);
   }
+  if (room.mode.rain) mult *= rainMult(path, freshCells(room.rd.rain.drops, rainStep(t - room.rd.rain.startedAt)));
   const pts = Math.round(wordPoints(word) * mult);
   p.rs.words.push(word);
   p.rs.wordPts[word] = pts;
@@ -207,8 +231,8 @@ function accept(room, p, word, path, viaAi) {
 }
 
 // Caminho válido para a palavra: usa o que o jogador desenhou ou procura um na grade.
-function pathFor(rd, word, path) {
-  const { grid, size } = rd;
+function pathFor(rd, word, path, grid = rd.grid) {
+  const { size } = rd;
   if (Array.isArray(path) && path.length === word.length) {
     const seen = new Set();
     let ok = true;
@@ -224,3 +248,8 @@ function pathFor(rd, word, path) {
 }
 
 export default game;
+
+// Grade valendo agora (muda na Chuva de Letras).
+function currentGrid(rd, now) {
+  return rd.rain ? rainGrid(rd.grid, rd.rain.drops, rainStep(now - rd.rain.startedAt)) : rd.grid;
+}

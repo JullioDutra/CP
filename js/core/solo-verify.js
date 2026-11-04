@@ -8,6 +8,8 @@ import { normalize, isWord, isCommon } from './dict.js';
 import { makeGrid, wordPoints, isAdjacent, randomLetter, randomVowel, VOWELS, MIN_LETTERS } from './letters.js';
 import { buildWordSearch, buildMixedSearch, isFreePath, WS_SIZE, MIX_EXTRA_MIN, MIX_EXTRA_PTS } from './wordsearch.js';
 import { generateSudoku, sudokuScore } from './sudoku.js';
+import { COMBO, comboMult, HOT, hotLetterAt, hotMult } from './multimodes.js';
+import { makeRain, rainGrid, rainStep, freshCells, rainMult, RAIN } from './rain.js';
 import { TEMAS } from '../../data/temas.js';
 import { MISTURA } from '../../data/mistura.js';
 
@@ -135,4 +137,68 @@ export function replaySurvival(seed, log = {}, maxSurvived = Infinity) {
   const bonus = Math.floor(survived / 10);
   const words = [...found].sort((a, b) => b.length - a.length);
   return { score: score + bonus, words: words.length, longest: words[0] || null };
+}
+
+// ---------- Grade Combo, Letra da Vez e Chuva de Letras (solo) ----------
+export const VARIANT_TIME = 120;
+export const VARIANT_SIZE = 5;
+
+export function setupGradeVariant(seed, kind) {
+  const rng = createRng(seed);
+  const { grid } = makeGrid(rng, VARIANT_SIZE, { minWords: 90, tries: 40 });
+  const out = { grid, size: VARIANT_SIZE };
+  if (kind === 'letra') {
+    const counts = {};
+    for (const l of grid) counts[l] = (counts[l] || 0) + 1;
+    const letters = rng.shuffle(Object.keys(counts)).sort((a, b) => counts[b] - counts[a]).slice(0, 8);
+    out.hot = { letters: rng.shuffle(letters), startedAt: 0, everyMs: HOT.everyMs };
+  }
+  if (kind === 'chuva') out.drops = makeRain(rng, grid, VARIANT_SIZE, VARIANT_TIME * 1000);
+  return out;
+}
+
+// Grade valendo no instante t (ms desde o início da partida).
+export const variantGrid = (setup, t) => (setup.drops ? rainGrid(setup.grid, setup.drops, rainStep(t)) : setup.grid);
+
+// Pontos de uma palavra aceita no instante t; `st` guarda o combo entre uma palavra e outra.
+export function variantPoints(setup, kind, word, path, t, st) {
+  let mult = 1;
+  if (kind === 'combo') {
+    st.combo = st.lastAt != null && t - st.lastAt <= COMBO.windowMs ? (st.combo || 0) + 1 : 1;
+    st.lastAt = t;
+    mult *= comboMult(st.combo);
+  }
+  if (kind === 'letra') mult *= hotMult(word, hotLetterAt(setup.hot, t)?.letter);
+  if (kind === 'chuva') mult *= rainMult(path, freshCells(setup.drops, rainStep(t)));
+  return { pts: Math.round(wordPoints(word) * mult), mult, combo: st.combo };
+}
+
+const pathFits = (grid, size, w, path) => Array.isArray(path) && path.length === w.length
+  && path.every((i, k) => Number.isInteger(i) && grid[i] === w[k] && path.indexOf(i) === k && (k === 0 || isAdjacent(path[k - 1], i, size)));
+
+// log: { events: [{ w, path, t (ms) }] } — refaz a partida e devolve os pontos oficiais.
+export function replayGradeVariant(seed, kind, log = {}, maxElapsedSec = VARIANT_TIME + 3) {
+  const setup = setupGradeVariant(seed, kind);
+  const limit = Math.min(maxElapsedSec, VARIANT_TIME + 3) * 1000;
+  const found = new Set();
+  const st = {};
+  let score = 0, lastT = 0;
+  for (const e of (Array.isArray(log.events) ? log.events : []).slice(0, 400)) {
+    const t = Number(e?.t);
+    if (!Number.isFinite(t) || t < lastT || t > limit) break;
+    lastT = t;
+    const w = normalize(e.w || '');
+    if (w.length < MIN_LETTERS || found.has(w) || !isWord(w)) continue;
+    let grid = variantGrid(setup, t);
+    if (!pathFits(grid, setup.size, w, e.path) && setup.drops) {
+      // logo depois da chuva, ainda vale a grade anterior (atraso de toque/rede)
+      const k = rainStep(t);
+      if (k > 0 && t - k * RAIN.everyMs < 1500) grid = rainGrid(setup.grid, setup.drops, k - 1);
+    }
+    if (!pathFits(grid, setup.size, w, e.path)) continue;
+    found.add(w);
+    score += variantPoints(setup, kind, w, e.path, t, st).pts;
+  }
+  const words = [...found].sort((a, b) => b.length - a.length);
+  return { score, words: words.length, longest: words[0] || null };
 }

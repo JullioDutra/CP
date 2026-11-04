@@ -16,7 +16,8 @@ import { createWsBoard } from './wsboard.js';
 import { createSudokuDuel } from './sudokuduel.js';
 import { createReveal } from './reveal.js';
 import { createTankReveal } from './tankreveal.js';
-import { COMBO, comboMult, hotLetterAt } from '../core/multimodes.js';
+import { comboMeter, hotLetterUi, rainChip } from '../core/grade-extras.js';
+import { showWordPath } from '../core/wordpath.js';
 import { mascotSay } from '../core/mascot.js';
 import { confetti } from '../core/fx.js';
 
@@ -558,9 +559,11 @@ function gradePlay(s) {
     },
   });
   const mode = modeOf(s);
-  const comboUi = mode.combo ? comboMeter() : null;
+  const comboUi = mode.combo ? comboMeter(serverNow) : null;
   mascotSay('start');
-  const hotUi = mode.hot ? hotLetterUi(s.play, wg.el) : null;
+  const hotUi = mode.hot ? hotLetterUi(s.play, wg.el, serverNow) : null;
+  const rainUi = mode.rain ? rainChip(s.play, serverNow) : null;
+  if (mode.rain) wg.mark(s.play.rain?.fresh || [], 'rain-new');
   const myPts = h('strong', {}, '0');
   const myCount = h('strong', {}, '0');
   const aliveEl = h('strong', {}, '');
@@ -575,11 +578,19 @@ function gradePlay(s) {
     : hudBar(s,
         mode.teams ? h('div', { class: 'hud-item' }, h('span', {}, 'Times'), teamEl) : h('div', { class: 'hud-item' }, h('span', {}, 'Pontos'), myPts),
         h('div', { class: 'hud-item' }, h('span', {}, 'Palavras'), myCount));
-  const el = h('div', { class: 'playing' }, hud, comboUi?.el || '', hotUi?.el || '', h('div', { class: 'play-area' }, wg.el, deadEl));
+  const el = h('div', { class: 'playing' }, hud, comboUi?.el || '', hotUi?.el || '', rainUi?.el || '', h('div', { class: 'play-area' }, wg.el, deadEl));
   return {
     el,
     update(st) {
       if (comboUi && st.play?.combo) comboUi.sync(st.play.combo);
+      // Chuva de Letras: grade nova chegou do servidor
+      if (mode.rain && st.play?.grid && st.play.grid.join('') !== wg.letters.join('')) {
+        const changed = st.play.grid.map((l, i) => (l !== wg.letters[i] ? i : -1)).filter((i) => i >= 0);
+        wg.setLetters(st.play.grid, changed);
+        wg.mark(st.play.rain?.fresh || changed, 'rain-new');
+        rainUi?.fell();
+      }
+      if (rainUi && st.play?.rain) rainUi.sync(st.play.rain);
       myPts.textContent = me()?.roundPoints ?? 0;
       myCount.textContent = st.play?.myWords?.length ?? 0;
       if (mode.survival) {
@@ -593,68 +604,10 @@ function gradePlay(s) {
         myCount.textContent = st.play?.teamWords?.length ?? myCount.textContent;
       }
     },
-    destroy: () => { wg.destroy(); hotUi?.destroy(); },
+    destroy: () => { wg.destroy(); hotUi?.destroy(); rainUi?.destroy(); },
   };
 }
 
-// Medidor do combo (Grade Combo): sobe a cada palavra seguida e esvazia em 7 s.
-function comboMeter() {
-  const label = h('strong', { class: 'cm-mult' }, '×1');
-  const count = h('span', { class: 'cm-count' }, 'Ache palavras em sequência!');
-  const bar = h('div', { class: 'cm-bar' }, h('span', {}));
-  const el = h('div', { class: 'combo-meter' }, h('div', { class: 'cm-top' }, icon('flame'), label, count), bar);
-  let timer = null;
-  const set = (combo, leftMs) => {
-    const mult = comboMult(Math.max(1, combo));
-    label.textContent = `×${String(mult).replace('.', ',')}`;
-    count.textContent = combo > 1 ? `${combo} seguidas` : 'Ache palavras em sequência!';
-    el.dataset.level = String(Math.min(4, Math.floor((mult - 1) * 2)));
-    const fill = bar.firstChild;
-    fill.style.transition = 'none';
-    fill.style.width = leftMs > 0 ? `${(leftMs / COMBO.windowMs) * 100}%` : '0%';
-    void fill.offsetWidth;
-    if (leftMs > 0) { fill.style.transition = `width ${leftMs}ms linear`; fill.style.width = '0%'; }
-    clearTimeout(timer);
-    if (leftMs > 0) timer = setTimeout(() => { count.textContent = 'Combo perdido'; label.textContent = '×1'; el.dataset.level = '0'; }, leftMs);
-  };
-  return {
-    el,
-    hit(combo) {
-      set(combo, COMBO.windowMs);
-      el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
-    },
-    sync({ count: c, lastAt }) {
-      const left = lastAt ? lastAt + COMBO.windowMs - serverNow() : 0;
-      if (left > 0 && !el.dataset.synced) { el.dataset.synced = '1'; set(c, left); }
-    },
-  };
-}
-
-// Letra da Vez: mostra a letra quente, quanto falta para trocar e faz as peças brilharem.
-function hotLetterUi(play, gridEl) {
-  const letterEl = h('strong', { class: 'hl-letter' }, '');
-  const ring = h('span', { class: 'hl-ring' });
-  const nextEl = h('span', { class: 'hl-next' }, '');
-  const el = h('div', { class: 'hot-letter' }, h('span', { class: 'hl-label' }, 'Letra da vez'), h('span', { class: 'hl-chip' }, ring, letterEl), h('span', { class: 'hl-hint' }, '×2 por letra', nextEl));
-  let current = null;
-  const tick = () => {
-    const cur = hotLetterAt(play.hot, serverNow());
-    if (!cur) return;
-    const left = Math.max(0, cur.endsAt - serverNow());
-    ring.style.setProperty('--p', String(left / play.hot.everyMs));
-    nextEl.textContent = ` · troca em ${Math.ceil(left / 1000)}s`;
-    if (cur.letter !== current) {
-      current = cur.letter;
-      letterEl.textContent = current.toUpperCase();
-      el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap');
-      gridEl.querySelectorAll('.tile').forEach((t, i) => t.classList.toggle('hot', play.grid[i] === current));
-      if (current) mascotSay('hot', { letter: current.toUpperCase() });
-    }
-  };
-  tick();
-  const iv = setInterval(tick, 250);
-  return { el, destroy: () => clearInterval(iv) };
-}
 
 // ----- Grade (telão) -----
 function gradeTv(s) {
@@ -662,12 +615,25 @@ function gradeTv(s) {
   const tiles = h('div', { class: 'board tv-board', style: `--n:${s.play.size}` }, s.play.grid.map((l, i) => h('div', { class: `tile ${bonus[i] ? 'has-bonus' : ''}` }, h('span', {}, l.toUpperCase()), bonus[i] ? h('em', { class: 'bonus' }, bonus[i]) : '')));
   const board = liveBoard(s, { title: modeOf(s).survival ? '❤️ Vidas' : 'Placar ao vivo' });
   const teamEl = h('div', { class: 'tv-teams' });
-  const hotUi = s.play.hot ? hotLetterUi(s.play, tiles) : null;
+  const hotUi = s.play.hot ? hotLetterUi(s.play, tiles, serverNow) : null;
+  const rainUi = s.play.rain ? rainChip(s.play, serverNow) : null;
+  let tvGrid = s.play.grid.slice();
+  const paintRain = (play) => {
+    const cells = [...tiles.children];
+    play.grid.forEach((l, i) => {
+      if (l !== tvGrid[i]) { cells[i].firstChild.textContent = l.toUpperCase(); cells[i].classList.remove('fresh'); void cells[i].offsetWidth; cells[i].classList.add('fresh'); }
+      cells[i].classList.toggle('rain-new', (play.rain?.fresh || []).includes(i));
+    });
+    if (play.grid.join('') !== tvGrid.join('')) rainUi?.fell();
+    tvGrid = play.grid.slice();
+  };
+  if (s.play.rain) paintRain(s.play);
   return {
-    destroy: () => hotUi?.destroy(),
-    el: h('div', { class: 'playing' }, hudBar(s), teamEl, hotUi?.el || '', h('div', { class: 'play-area' }, tiles, board.el)),
+    destroy: () => { hotUi?.destroy(); rainUi?.destroy(); },
+    el: h('div', { class: 'playing' }, hudBar(s), teamEl, hotUi?.el || '', rainUi?.el || '', h('div', { class: 'play-area' }, tiles, board.el)),
     update: (st) => {
       board.update(st);
+      if (st.play?.rain) { paintRain(st.play); rainUi?.sync(st.play.rain); }
       if (st.teams) {
         const sum = { A: st.teams.totals.A, B: st.teams.totals.B };
         for (const p of st.players) if (p.team) sum[p.team] += p.roundPoints;
@@ -786,14 +752,15 @@ function resultsView(s) {
 
   let delay = 0;
   const stagger = () => `animation-delay:${Math.min((delay += 0.02), 0.8)}s`;
-  const wordChip = (w) =>
-    h('span', { class: `wchip ${w.status}`, style: stagger(), title: w.status === 'unique' ? 'Só esta pessoa achou' : `${w.by} pessoas acharam` },
+  const showPath = (word, pts, who) => r.grid && showWordPath(word, r.grids || r.grid, r.size, { pts, who });
+  const wordChip = (w, id) =>
+    h('button', { type: 'button', class: `wchip ${w.status}`, style: stagger(), title: `${w.status === 'unique' ? 'Só esta pessoa achou' : `${w.by} pessoas acharam`} — toque para ver onde estava`, onclick: () => showPath(w.w, w.pts, byId[id]?.name) },
       w.status === 'unique' ? '★ ' : '', w.w.toUpperCase(), w.status === 'shared' ? h('span', { class: 'by-count', 'aria-label': `${w.by} pessoas` }, `×${w.by}`) : '', h('small', {}, `+${w.pts}`));
 
   const detailFor = (id) => {
     const d = r.players?.[id];
     if (!d) return h('small', { class: 'muted' }, 'Entrou depois desta rodada');
-    if (r.type === 'grade') return d.words.length ? [tank(d.unique, d.shared, 'small'), ...d.words.map(wordChip)] : h('small', { class: 'muted' }, 'Nenhuma palavra');
+    if (r.type === 'grade') return d.words.length ? [tank(d.unique, d.shared, 'small'), ...d.words.map((w) => wordChip(w, id))] : h('small', { class: 'muted' }, 'Nenhuma palavra');
     if (r.type === 'wordsearch') {
       const ex = d.extras || [];
       return d.found.length || ex.length
@@ -829,7 +796,8 @@ function resultsView(s) {
       h('span', { class: 'legend-note' }, 'Únicas e repetidas valem os mesmos pontos.'));
     extra = h('div', {},
       r.totals ? h('div', { class: 'tank-box' }, h('h3', {}, 'Tanque da rodada'), tank(r.totals.unique, r.totals.shared, 'big'), h('p', { class: 'hint' }, `${r.totals.distinct} palavras diferentes achadas por todos`)) : '',
-      r.missed?.length ? h('div', { class: 'missed' }, h('h4', {}, 'Algumas palavras que ninguém achou:'), h('p', {}, r.missed.map((w) => w.toUpperCase()).join(' · '))) : '');
+      r.missed?.length ? h('div', { class: 'missed' }, h('h4', {}, 'Algumas palavras que ninguém achou (toque para ver onde estavam):'),
+        h('div', { class: 'wchips' }, r.missed.map((w) => h('button', { type: 'button', class: 'wchip missed-chip', onclick: () => showPath(w, null, 'ninguém achou') }, w.toUpperCase())))) : '');
   } else if (r.type === 'wordsearch') {
     const missing = r.words.filter((w) => !w.by);
     extra = h('p', { class: 'highlight' }, r.free ? 'Mistura' : `Tema: ${r.theme}`, missing.length ? ` · Ninguém achou: ${missing.map((w) => w.display.toUpperCase()).join(', ')}` : ' · Todas as palavras foram achadas!');
@@ -846,7 +814,7 @@ function resultsView(s) {
     statsBtn.replaceChildren(icon('chart'), open ? 'Fechar estatísticas' : 'Mais estatísticas');
     if (open) statsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } }, icon('chart'), 'Mais estatísticas');
-  const after = h('div', { class: 'after-reveal hidden' }, final ? crownBanner(s) : '', podium, longestCards(r, byId), progressEl, globalEl, h('div', { class: 'row-actions center' }, statsBtn), statsPanel);
+  const after = h('div', { class: 'after-reveal hidden' }, final ? crownBanner(s) : '', podium, awardCards(r, byId, s.you), longestCards(r, byId), progressEl, globalEl, h('div', { class: 'row-actions center' }, statsBtn), statsPanel);
 
   // 1º a animação; depois pódio, posição global, estatísticas e botões
   const teamRound = teamMode ? teamRoundFor(r, s) : null;
@@ -854,6 +822,7 @@ function resultsView(s) {
   const revealPlayers = teamMode ? [] : s.players.filter((p) => r.scores && p.id in r.scores);
   const useTanks = r.type === 'grade' && !teamMode && revealPlayers.length >= 2;
   const reveal = (useTanks ? createTankReveal : createReveal)({
+    onPlayer: (id) => showPlayerWords(r, id, byId),
     round: teamRound || r,
     players: teamMode ? ['A', 'B'].map((k) => ({ id: k, name: TEAMS[k].name, avatar: TEAMS[k].avatar })) : s.players.filter((p) => r.scores && p.id in r.scores),
     totals: teamMode ? { ...s.teams.totals } : Object.fromEntries(s.standings.map((x) => [x.id, x.total])),
@@ -1004,4 +973,53 @@ function longestCards(r, byId) {
 // Falha de rede/servidor (não é palavra errada): o jogador vê amarelo e pode tentar de novo.
 function connectionTrouble(r) {
   return !r?.ok && (r?.retry || /Sem conexão|Sem resposta/.test(r?.reason || ''));
+}
+
+// Destaques da rodada: cartões que viram mostrando quem levou cada prêmio (toque para virar).
+function awardCards(r, byId, you) {
+  if (r.type !== 'grade' || !r.players) return '';
+  const entries = Object.entries(r.players).filter(([id]) => byId[id]);
+  if (entries.length < 2) return '';
+  const best = (fn) => {
+    let top = null;
+    for (const [id, d] of entries) { const v = fn(d); if (v != null && (top == null || v.score > top.score)) top = { id, ...v }; }
+    return top && top.score > 0 ? top : null;
+  };
+  const awards = [
+    { icon: 'ruler', title: 'Maior palavra', pick: best((d) => { const w = d.words.slice().sort((a, b) => b.w.length - a.w.length)[0]; return w && { score: w.w.length, value: `${w.w.toUpperCase()} · ${w.w.length} letras` }; }) },
+    { icon: 'target', title: 'Mais únicas', pick: best((d) => ({ score: d.unique, value: d.unique === 1 ? '1 que ninguém mais achou' : `${d.unique} que ninguém mais achou` })) },
+    { icon: 'grid', title: 'Mais palavras', pick: best((d) => ({ score: d.words.length, value: `${d.words.length} ${d.words.length === 1 ? 'palavra' : 'palavras'}` })) },
+    { icon: 'star', title: 'Palavra de ouro', pick: best((d) => { const w = d.words.slice().sort((a, b) => b.pts - a.pts)[0]; return w && { score: w.pts, value: `${w.w.toUpperCase()} · +${w.pts}` }; }) },
+  ].filter((a) => a.pick);
+  if (!awards.length) return '';
+  const cards = awards.map((a, i) => {
+    const p = byId[a.pick.id];
+    const card = h('button', { type: 'button', class: `award ${a.pick.id === you ? 'mine' : ''}`, style: `--d:${0.25 + i * 0.35}s`, 'aria-label': `${a.title}: ${p.name}, ${a.pick.value}`, onclick: () => card.classList.toggle('back') },
+      h('span', { class: 'award-inner' },
+        h('span', { class: 'award-face front' }, h('span', { class: 'aw-icon' }, icon(a.icon)), h('strong', {}, a.title), h('small', {}, 'toque para ver')),
+        h('span', { class: 'award-face rear' }, h('span', { class: 'aw-title' }, a.title), h('span', { class: 'aw-avatar' }, p.avatar), h('strong', {}, p.name), h('small', {}, a.pick.value))));
+    // vira sozinho, um depois do outro
+    setTimeout(() => card.classList.add('back'), 900 + i * 350);
+    return card;
+  });
+  return h('div', { class: 'awards' }, h('p', { class: 'group-label' }, 'Destaques da rodada'), h('div', { class: 'award-row' }, cards));
+}
+
+// Palavras de um jogador na rodada (aberto ao tocar no tanque); cada palavra mostra onde estava.
+function showPlayerWords(r, id, byId) {
+  const d = r.players?.[id];
+  const p = byId[id];
+  if (!d || !p) return;
+  const close = () => sheet.remove();
+  const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => e.target === sheet && close() },
+    h('div', { class: 'sheet player-words', role: 'dialog', 'aria-label': `Palavras de ${p.name}` },
+      h('div', { class: 'wp-head' },
+        h('div', {}, h('strong', { class: 'wp-word' }, `${p.avatar} ${p.name}`), h('span', { class: 'muted' }, `${d.words.length} palavras · ${d.unique} únicas · +${d.score} pts`)),
+        h('button', { class: 'btn ghost small icon-btn', 'aria-label': 'Fechar', onclick: close }, icon('close'))),
+      d.words.length
+        ? h('div', { class: 'wchips' }, d.words.map((w) => h('button', { type: 'button', class: `wchip ${w.status}`, onclick: () => r.grid && showWordPath(w.w, r.grids || r.grid, r.size, { pts: w.pts, who: p.name }) },
+            w.status === 'unique' ? '★ ' : '', w.w.toUpperCase(), h('small', {}, `+${w.pts}`))))
+        : h('p', { class: 'hint' }, 'Nenhuma palavra nesta rodada.'),
+      h('p', { class: 'hint' }, 'Toque numa palavra para ver onde ela estava.')));
+  document.body.append(sheet);
 }

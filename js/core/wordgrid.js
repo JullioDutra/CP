@@ -200,6 +200,8 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
       flash(changed, 'fresh');
     },
     setBonus(b) { bonus = b; renderTiles(); },
+    // marca peças com uma classe (ex.: letras que acabaram de cair na Chuva de Letras)
+    mark(cells, cls) { tiles.forEach((t, i) => t.classList.toggle(cls, cells.includes(i))); },
     disable() {
       document.removeEventListener('keydown', onKey);
       board.classList.add('disabled');

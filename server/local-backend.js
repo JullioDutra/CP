@@ -11,7 +11,7 @@ import { createBackend, PG_OPTIONS } from './backend.js';
 // fora do Supabase, onde não existem os papéis anon/authenticated.
 export async function ensureSchema(db) {
   const [{ ok }] = await db`SELECT to_regclass('trama.rooms') IS NOT NULL AS ok`;
-  if (ok) return false;
+  if (ok) { await migrate(db); return false; }
   let sql = await readFile(new URL('../deployment/schema.sql', import.meta.url), 'utf8');
   const [{ n }] = await db`SELECT COUNT(*)::int AS n FROM pg_roles WHERE rolname IN ('anon', 'authenticated')`;
   if (n < 2) sql = sql.replaceAll(', anon, authenticated', '');
@@ -21,6 +21,20 @@ export async function ensureSchema(db) {
     if (!again) await tx.unsafe(sql);
   });
   return true;
+}
+
+// Colunas novas da tabela de salas (bancos criados antes delas).
+async function migrate(db) {
+  const [{ n }] = await db`SELECT COUNT(*)::int AS n FROM information_schema.columns WHERE table_schema = 'trama' AND table_name = 'rooms' AND column_name = 'player_ids'`;
+  if (n) return;
+  await db.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(71903299)`;
+    await tx.unsafe(`ALTER TABLE trama.rooms ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0;
+      ALTER TABLE trama.rooms ADD COLUMN IF NOT EXISTS deadline BIGINT;
+      ALTER TABLE trama.rooms ADD COLUMN IF NOT EXISTS final_pending BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE trama.rooms ADD COLUMN IF NOT EXISTS connected TEXT NOT NULL DEFAULT '';
+      ALTER TABLE trama.rooms ADD COLUMN IF NOT EXISTS player_ids TEXT NOT NULL DEFAULT '';`);
+  });
 }
 
 export async function localBackend(databaseUrl, { max = 5, verifier = createVerifier() } = {}) {

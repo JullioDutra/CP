@@ -1097,3 +1097,53 @@ body.time-critical .board, body.time-critical .wordgrid { animation: shake .5s 1
   #app > *, .tile.sel, .tile.good, .wm-tiles span, .hero::before, .fio.talk .fio-body, .fio-svg .fio-eye, .tile.hot, .combo-meter.bump .cm-mult { animation: none !important; }
   .fio { transition: none; }
 }
+
+/* ----- Chuva de Letras ----- */
+.rain-chip { max-width: 520px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; font-weight: 800; color: var(--muted); }
+.rain-chip .ico { color: #0ea5e9; width: 22px; height: 22px; }
+.rain-chip strong { color: var(--text); font-variant-numeric: tabular-nums; min-width: 3ch; }
+.rain-chip .rc-hint { font-weight: 700; font-size: .85rem; }
+.rain-chip.pour .ico { animation: rain-pour .7s cubic-bezier(.3,1.6,.5,1); }
+@keyframes rain-pour { 30% { transform: translateY(-6px) scale(1.3); } 100% { transform: none; } }
+.tile.rain-new { background: #e0f2fe; border-color: #38bdf8; box-shadow: 0 3px 0 #38bdf8; }
+.tile.rain-new span { color: #0369a1; }
+.tile.rain-new::after { content: '×2'; position: absolute; top: 4px; right: 6px; font: 900 .62rem/1 var(--font); color: #0284c7; }
+@media (prefers-color-scheme: dark) { .tile.rain-new { background: #0c2a3d; } .tile.rain-new span { color: #7dd3fc; } }
+.tile.fresh { animation: drop-in .55s cubic-bezier(.3,1.4,.5,1); }
+@keyframes drop-in { 0% { transform: translateY(-60%) scale(.8); opacity: 0; } 70% { transform: translateY(6%); opacity: 1; } 100% { transform: none; } }
+.tile { position: relative; }
+@media (prefers-reduced-motion: reduce) { .tile.fresh, .rain-chip.pour .ico { animation: none !important; } }
+
+/* ----- resultados interativos: destaques e "onde estava a palavra" ----- */
+button.wchip { appearance: none; border: 0; font: inherit; cursor: pointer; }
+button.wchip:hover { filter: brightness(.96); transform: translateY(-1px); }
+.wchip.missed-chip { background: var(--surface-2); color: var(--text); font-weight: 800; }
+.awards { margin: 16px 0; }
+.award-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.award { appearance: none; border: 0; padding: 0; background: none; cursor: pointer; perspective: 800px; height: 128px; font: inherit; color: inherit; animation: award-in .5s cubic-bezier(.3,1.5,.5,1) both; animation-delay: var(--d); }
+@keyframes award-in { from { opacity: 0; transform: translateY(16px) scale(.9); } to { opacity: 1; transform: none; } }
+.award-inner { position: relative; display: block; width: 100%; height: 100%; transition: transform .6s cubic-bezier(.3,1.3,.5,1); transform-style: preserve-3d; }
+.award.back .award-inner { transform: rotateY(180deg); }
+.award-face { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 4px; padding: 10px; border-radius: 16px; backface-visibility: hidden; text-align: center; }
+.award-face.front { background: var(--primary-soft); color: var(--primary); }
+.award-face.front strong { color: var(--text); }
+.award-face.rear { transform: rotateY(180deg); background: var(--surface); box-shadow: inset 0 0 0 1.5px #f2c14e; }
+.award.mine .award-face.rear { background: #fff7d6; }
+@media (prefers-color-scheme: dark) { .award.mine .award-face.rear { background: #3a3010; } }
+.award-face small { color: var(--muted); font-weight: 700; font-size: .78rem; overflow-wrap: anywhere; }
+.aw-icon .ico { width: 28px; height: 28px; }
+.aw-avatar { font-size: 1.8rem; }
+.wordpath { display: grid; gap: 14px; justify-items: center; }
+.wp-head { width: 100%; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.wp-word { display: block; font-family: var(--display); font-size: 1.6rem; }
+.wp-board { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 6px; width: min(300px, 100%); }
+.wp-tile { aspect-ratio: 1; display: grid; place-items: center; border-radius: 10px; background: var(--surface-2); font-weight: 900; font-size: 1.15rem; transition: background .2s, transform .25s cubic-bezier(.3,1.6,.5,1), color .2s; }
+.wp-tile.on { background: var(--sel); color: var(--primary-strong); transform: scale(1.08); box-shadow: 0 0 0 2px var(--sel-border); }
+.wp-tile.end { background: var(--good); color: #fff; box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .award, .award-inner, .wp-tile { animation: none !important; transition: none !important; } }
+.tr-player.clickable { cursor: pointer; border-radius: 14px; transition: transform .15s; }
+.tr-player.clickable:hover, .tr-player.clickable:focus-visible { transform: translateY(-3px); }
+.tr-tip { text-align: center; margin: 0; }
+.player-words { display: grid; gap: 12px; max-height: 80vh; overflow: auto; }
+.aw-title { font-size: .66rem; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+@media (max-width: 420px) { .room-code-small { font-size: .85rem; } .room-top .topbar-title { flex: 1; } }
