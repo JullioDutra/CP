@@ -15,6 +15,23 @@ export const TEAMS = {
 };
 export const REACTIONS = ['😂', '😮', '👏', '🔥', '😭', '🤯', '❤️', '👀'];
 
+// Grade Combo: palavras em sequência (até 7 s entre uma e outra) multiplicam os pontos.
+export const COMBO = { windowMs: 7000, steps: [1, 1, 1.5, 1.5, 2, 2, 2.5, 2.5, 3] };
+export const comboMult = (combo) => COMBO.steps[Math.max(0, Math.min(combo, COMBO.steps.length) - 1)];
+
+// Letra da Vez: a cada 20 s uma letra da grade fica "quente"; palavra com ela vale ×2 (com duas, ×3).
+export const HOT = { everyMs: 20000, maxMult: 3 };
+export function hotLetterAt(hot, t) {
+  if (!hot?.letters?.length) return null;
+  const k = Math.max(0, Math.floor((t - hot.startedAt) / hot.everyMs));
+  return { letter: hot.letters[k % hot.letters.length], endsAt: hot.startedAt + (k + 1) * hot.everyMs };
+}
+export function hotMult(word, letter) {
+  if (!letter) return 1;
+  const n = [...word].filter((c) => c === letter).length;
+  return n ? Math.min(HOT.maxMult, 1 + n) : 1;
+}
+
 // Arena Sobrevivência
 export const SURVIVAL = { startMs: 60000, maxMs: 90000, stealMs: 1000, gainPerLetterMs: 1000, bonus: [40, 20, 10] };
 const DIFFICULTY_LABELS = { facil: 'Fácil', medio: 'Médio', dificil: 'Difícil' };
@@ -96,6 +113,46 @@ export const MULTI_MODES = {
     options: {
       rounds: { ...ROUNDS, default: 3 },
       seconds: { label: 'Tempo', choices: [60, 90, 120, 180, 240], default: 120, format: 'time' },
+      size: { label: 'Grade', choices: [4, 5, 6], default: 5, format: 'grid' },
+    },
+  },
+  'grupo-combo': {
+    id: 'grupo-combo',
+    game: 'grade',
+    category: 'novo',
+    name: 'Grade Combo',
+    icon: '🔥',
+    short: 'Palavras em sequência multiplicam os pontos',
+    combo: true,
+    rules: [
+      'Todos recebem a mesma grade. Ache palavras sem parar para fazer combo!',
+      'Palavra enviada até 7 s depois da anterior aumenta o combo: 3ª ×1,5 · 5ª ×2 · 7ª ×2,5 · 9ª em diante ×3.',
+      'Demorou mais de 7 s? O combo volta ao começo.',
+      'Várias pessoas podem achar a mesma palavra: todas ganham os pontos.',
+    ],
+    options: {
+      rounds: { ...ROUNDS, default: 3 },
+      seconds: { label: 'Tempo', choices: [60, 90, 120, 180], default: 90, format: 'time' },
+      size: { label: 'Grade', choices: [4, 5, 6], default: 5, format: 'grid' },
+    },
+  },
+  'grupo-letra': {
+    id: 'grupo-letra',
+    game: 'grade',
+    category: 'novo',
+    name: 'Letra da Vez',
+    icon: '🎯',
+    short: 'A letra quente vale o dobro',
+    hot: true,
+    rules: [
+      'Todos recebem a mesma grade. A cada 20 s uma letra fica quente (brilhando na grade).',
+      'Palavra com a letra quente vale ×2; com duas dela, ×3.',
+      'Fique de olho na troca: guarde as palavras certas para a letra certa!',
+      'Várias pessoas podem achar a mesma palavra: todas ganham os pontos.',
+    ],
+    options: {
+      rounds: { ...ROUNDS, default: 3 },
+      seconds: { label: 'Tempo', choices: [60, 90, 120, 180], default: 120, format: 'time' },
       size: { label: 'Grade', choices: [4, 5, 6], default: 5, format: 'grid' },
     },
   },

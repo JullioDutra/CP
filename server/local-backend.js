@@ -2,11 +2,10 @@
 // configurada, e pelos testes. Carrega o dicionário uma vez por instância.
 import { readFile } from 'node:fs/promises';
 import postgres from 'postgres';
-import { setDictWords, allWords } from '../js/core/dict.js';
+import { loadServerDict } from './dict-node.js';
 import { createVerifier } from './ai.js';
 import { createBackend, PG_OPTIONS } from './backend.js';
 
-const DATA = new URL('../data/', import.meta.url);
 
 // Cria as tabelas na primeira vez (banco novo, ex.: Neon pela Vercel). Funciona também
 // fora do Supabase, onde não existem os papéis anon/authenticated.
@@ -25,10 +24,7 @@ export async function ensureSchema(db) {
 }
 
 export async function localBackend(databaseUrl, { max = 5, verifier = createVerifier() } = {}) {
-  if (!allWords().length) {
-    const [all, common] = await Promise.all([readFile(new URL('palavras.txt', DATA), 'utf8'), readFile(new URL('comuns.txt', DATA), 'utf8')]);
-    setDictWords(all.split('\n'), common.split('\n'));
-  }
+  loadServerDict();
   const db = postgres(databaseUrl, { ...PG_OPTIONS, max, onnotice: () => {} });
   await ensureSchema(db);
   const handle = createBackend({ db, verifier });

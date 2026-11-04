@@ -70,8 +70,7 @@ export default {
         items.push({ label: w, pts, ai: v.ai });
         top.set('score', score);
         top.set('count', found.size);
-        toast(root, `+${pts}`, 'good');
-        return { ok: true };
+        return { ok: true, pts };
       },
     });
 

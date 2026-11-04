@@ -7,7 +7,7 @@ import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { setDictWords } from '../js/core/dict.js';
+import { loadServerDict } from './dict-node.js';
 import { RoomManager } from './rooms.js';
 import { createVerifier, loadDotEnv } from './ai.js';
 import { createStore } from './store.js';
@@ -20,8 +20,7 @@ const PORT = Number(process.env.PORT) || 8080;
 const DATA_DIR = process.env.TRAMA_DATA_DIR || path.join(ROOT, 'data', 'runtime');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 
-const readList = (f) => readFileSync(path.join(ROOT, 'data', f), 'utf8').split('\n');
-setDictWords(readList('palavras.txt'), readList('comuns.txt'));
+loadServerDict();
 
 const verifier = createVerifier({
   cacheFile: path.join(DATA_DIR, 'ia-cache.json'),

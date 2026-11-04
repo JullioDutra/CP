@@ -2,6 +2,8 @@ import { h } from './core/ui.js';
 import { icon, modeIcon } from './core/icons.js';
 import { clearTimeAlert } from './core/timealert.js';
 import { installButton } from './core/install.js';
+import { mascotSay, mascotToggle } from './core/mascot.js';
+import { confetti } from './core/fx.js';
 import { loadDict } from './core/dict.js';
 import { getRanking, addScore, qualifies, getPlayerName, setPlayerName, clearRanking } from './core/ranking.js';
 
@@ -109,7 +111,8 @@ function showMenu() {
     h('footer', { class: 'home-foot' },
       h('button', { class: 'link-btn', onclick: () => showRanking() }, icon('trophy'), 'Ranking global'),
       h('button', { class: 'link-btn', onclick: () => showProfile(ctx) }, icon('user'), 'Meu perfil'),
-      installButton('link-btn'))
+      installButton('link-btn'),
+      mascotToggle('link-btn'))
   );
 }
 
@@ -257,7 +260,8 @@ async function showSoloReveal(m, opts, result) {
     intro: record ? `Seu recorde: ${record} pts` : 'Contando seus pontos…',
     finishText: () => {
       if (!record) return { title: `${result.score} pontos`, sub: 'Primeira partida neste modo!' };
-      if (result.score > record) return { title: 'Novo recorde!', sub: `${result.score} pontos (antes: ${record})` };
+      if (result.score > record) { confetti(); mascotSay('record'); return { title: 'Novo recorde!', sub: `${result.score} pontos (antes: ${record})` }; }
+      mascotSay('end');
       if (result.score === record) return { title: `${result.score} pontos`, sub: 'Empatou com o seu recorde!' };
       return { title: `${result.score} pontos`, sub: `Faltaram ${record - result.score + 1} para o recorde` };
     },

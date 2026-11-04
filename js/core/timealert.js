@@ -2,6 +2,7 @@
 // a borda da tela escurece em vermelho e um tique toca a cada segundo
 // (mais forte nos 5 finais). Só vale para contagem regressiva.
 import { play } from './sound.js';
+import { mascotSay } from './mascot.js';
 
 const LIMIT = 10;
 const state = new WeakMap();
@@ -29,6 +30,7 @@ export function timeAlert(el, secs) {
   el.classList.toggle('time-crit', low && s <= 5);
   document.body.classList.toggle('time-low', low);
   document.body.classList.toggle('time-critical', low && s <= 5);
+  if (low && st.last == null) mascotSay('time');
   if (low && st.last !== s) {
     st.last = s;
     el.classList.remove('time-beat');

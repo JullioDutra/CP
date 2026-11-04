@@ -1,7 +1,7 @@
 // Arquivos que o servidor entrega ao navegador (todo o resto vira index.html).
 import path from 'node:path';
 
-export const PUBLIC = ['index.html', 'css/', 'js/', 'data/palavras.txt', 'data/comuns.txt', 'data/temas.js', 'data/mistura.js', 'manifest.webmanifest', 'sw.js', 'icon.svg', 'icon-192.png', 'icon-512.png'];
+export const PUBLIC = ['index.html', 'css/', 'js/', 'data/palavras.txt', 'data/comuns.txt', 'data/bloqueadas.txt', 'data/temas.js', 'data/mistura.js', 'manifest.webmanifest', 'sw.js', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 // O caminho é decodificado e normalizado ANTES da checagem, para que
 // "js/..%2f.env" e parecidos nunca saiam da pasta liberada.

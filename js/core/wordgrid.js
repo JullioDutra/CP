@@ -2,6 +2,8 @@
 import { h } from './ui.js';
 import { isAdjacent, findPath } from './letters.js';
 import { play } from './sound.js';
+import { mascotSay } from './mascot.js';
+import { floatPoints } from './fx.js';
 
 export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
   let grid = letters.slice();
@@ -28,16 +30,31 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
       tiles.push(t);
       board.append(t);
     });
+    board.append(trace);
     paint();
   }
 
   const word = () => path.map((i) => grid[i]).join('');
+
+  // traço ligando as peças escolhidas (desenhado por cima da grade)
+  const trace = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  trace.setAttribute('class', 'trace');
+  trace.setAttribute('aria-hidden', 'true');
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+  trace.append(line);
+  function drawTrace() {
+    if (path.length < 2) { line.setAttribute('points', ''); return; }
+    const b = board.getBoundingClientRect();
+    trace.setAttribute('viewBox', `0 0 ${b.width} ${b.height}`);
+    line.setAttribute('points', path.map((i) => { const r = tiles[i].getBoundingClientRect(); return `${r.left - b.left + r.width / 2},${r.top - b.top + r.height / 2}`; }).join(' '));
+  }
 
   function paint() {
     tiles.forEach((t, i) => {
       t.classList.toggle('sel', path.includes(i));
       t.classList.toggle('last', path[path.length - 1] === i);
     });
+    drawTrace();
     const w = typed || word();
     current.textContent = w ? w.toUpperCase() : ' ';
   }
@@ -60,6 +77,9 @@ export function createWordGrid({ size, letters, bonus = {}, onSubmit }) {
     Promise.resolve(onSubmit(w, p)).then((res) => {
       flash(p, res?.ok ? 'good' : res?.dup ? 'dup' : 'bad');
       play(res?.ok ? (w.length >= 6 ? 'big' : 'good') : res?.dup ? 'dup' : 'bad');
+      if (res?.ok && res.pts) floatPoints(tiles[p[p.length - 1]], `+${res.pts}`, res.mult > 1 || w.length >= 7 ? 'big' : 'good');
+      if (res?.ok) mascotSay(res.combo >= 3 ? 'combo' : res.mult > 1 ? 'mult' : w.length >= 7 ? 'big' : 'word', { word: w, pts: res.pts, combo: res.combo });
+      else if (!res?.dup) mascotSay('bad', { word: w });
     });
   }
 

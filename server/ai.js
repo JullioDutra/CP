@@ -12,7 +12,7 @@
 //   LLM_TIMEOUT_MS  padrão 6000
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { normalize, isPlayable, isWord, addWords } from '../js/core/dict.js';
+import { normalize, isPlayable, isWord, isBlocked, addWords } from '../js/core/dict.js';
 
 const MIN_CONFIDENCE = 0.7;
 const MAX_PER_MINUTE = 60;
@@ -109,6 +109,7 @@ export function createVerifier({
   async function verify(raw) {
     const word = normalize(raw);
     if (!isPlayable(word)) return { ok: false, fonte: 'invalida', motivo: 'Use de 3 a 12 letras' };
+    if (isBlocked(word)) return { ok: false, fonte: 'bloqueada' }; // palavrão, ofensa, gíria ou nome
     if (isWord(word)) return { ok: true, fonte: 'dicionario' };
     if (cache.has(word)) return { ...cache.get(word), fonte: 'cache' };
     if (!enabled) return { ok: false, fonte: 'indisponivel' };

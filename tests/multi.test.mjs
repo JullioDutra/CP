@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { loadTestDict, fakeClock, fakeLlmFetch } from './helpers.mjs';
 import { wordPoints, solve } from '../js/core/letters.js';
 import { isWord, isCommon } from '../js/core/dict.js';
+import { hotLetterAt } from '../js/core/multimodes.js';
 import { scoreRound, sanitizeOptions, defaultOptions, sudokuDuelScore, bonusCells, bonusMultiplier } from '../js/core/multimodes.js';
 import { createRng } from '../js/core/rng.js';
 import { Room, cleanName } from '../server/room.js';
@@ -271,6 +272,46 @@ const mkRoom = (clock, extra = {}) => new Room('ABCD', { now: clock.now, setTime
   assert.equal(room.crownEvent.fromStreak, 2);
   room.leave(beto.id);
   assert.equal(room.crown, null, 'quem sai da sala perde a coroa');
+}
+
+// ---------- Grade Combo e Letra da Vez ----------
+{
+  const clock = fakeClock();
+  const room = mkRoom(clock);
+  const ana = room.addPlayer({ name: 'Ana' });
+  room.addPlayer({ name: 'Beto' });
+  room.setOptions(ana.id, { mode: 'grupo-combo', rounds: 1, seconds: 90, size: 5 });
+  room.start(ana.id);
+  clock.advance(3500);
+  const ws = solve(room.rd.grid, 5).sort((a, b) => a.length - b.length);
+  const results = [];
+  for (let k = 0; k < 5; k++) { clock.advance(2000); results.push(room.act(ana.id, { a: 'submit', word: ws[k] })); }
+  assert.deepEqual(results.map((r) => r.combo), [1, 2, 3, 4, 5]);
+  assert.equal(results[2].pts, Math.round(wordPoints(ws[2]) * 1.5), '3ª palavra seguida ×1,5');
+  assert.equal(results[4].pts, Math.round(wordPoints(ws[4]) * 2), '5ª ×2');
+  clock.advance(8000);
+  const slow = room.act(ana.id, { a: 'submit', word: ws[5] });
+  assert.equal(slow.combo, 1, 'demorou: combo recomeça');
+  assert.equal(room.stateFor(ana.id).play.combo.count, 1);
+}
+{
+  const clock = fakeClock();
+  const room = mkRoom(clock);
+  const ana = room.addPlayer({ name: 'Ana' });
+  room.addPlayer({ name: 'Beto' });
+  room.setOptions(ana.id, { mode: 'grupo-letra', rounds: 1, seconds: 120, size: 5 });
+  room.start(ana.id);
+  clock.advance(3500);
+  const hot = room.stateFor(ana.id).play.hot;
+  assert.ok(hot.letters.length >= 3 && hot.everyMs === 20000);
+  const cur = hotLetterAt(hot, clock.now()).letter;
+  const ws = solve(room.rd.grid, 5);
+  const withIt = ws.find((w) => w.split(cur).length === 2);
+  const without = ws.find((w) => !w.includes(cur));
+  if (withIt) assert.equal(room.act(ana.id, { a: 'submit', word: withIt }).pts, wordPoints(withIt) * 2, 'letra quente ×2');
+  if (without) assert.equal(room.act(ana.id, { a: 'submit', word: without }).pts, wordPoints(without), 'sem a letra: normal');
+  clock.advance(20000);
+  assert.notEqual(hotLetterAt(hot, clock.now()).letter === cur && hot.letters[1] !== cur, true, 'a letra troca a cada 20 s');
 }
 
 // ---------- Sudoku Duelo ----------

@@ -67,7 +67,7 @@ export default {
           setTimeout(() => wg.setLetters(next, path), 250);
           toast(root, 'Explosão de letras!', 'good');
         }
-        return { ok: true };
+        return { ok: true, pts };
       },
     });
 

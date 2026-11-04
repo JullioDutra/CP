@@ -192,7 +192,7 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
   return async function handle(req, res, url) {
     try {
       if (url.pathname.startsWith('/api/palavra/')) {
-        if (!allow(`palavra:${req.socket.remoteAddress}`, 30)) return json(res, 429, { ok: false, motivo: 'Muitas verificações, espere um pouco' });
+        if (!allow(`palavra:${req.socket.remoteAddress}`, 90)) return json(res, 429, { ok: false, motivo: 'Muitas verificações, espere um pouco' });
         return json(res, 200, await verifier.verify(decodeURIComponent(url.pathname.slice('/api/palavra/'.length))));
       }
       const fn = routes[`${req.method} ${url.pathname}`];

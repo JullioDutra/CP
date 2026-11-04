@@ -1,0 +1,15 @@
+# Prenomes do IBGE que também são palavras comuns do português e continuam valendo.
+# (Os demais prenomes frequentes saem do dicionário — ver scripts/build-dict.mjs.)
+nao dos ali atos tais
+claro clara filho filha serio senhora irma primo neto nora
+ira iria ida iam lia leia dara daria sara mira tome tomas amos riam vivia viviam sonha libera
+amado amada amando amaria amara armas armando rolando aparecido
+luz lua rosa flor mel pedra alma graca natal natalino julho junho domingo domingos
+linda bela branca alta gentil justo maximo macio macia juvenil celeste solene clemente vital
+franca franco frances romano romana marcial urbano severo modesto augusto fausto benta
+indiana argentina argentino siria marques batista marinho santos reis ramos nascimento neves
+vitoria gloria aurora flora perola safira esmeralda jade rubi violeta margarida jasmim iris gema oliva tiara brisa
+dores piedade inocencia clemencia felicidade esperanca pureza delicia norma generosa divina divino
+santa santo deusa socorro custodia patrocinio encarnacao trindade abadia perpetua
+salvador salvadora messias arcanjo angelica genesis amador
+elite midia trafico pilar cosmo reinado sirene tina nata rena pio emir tecla calos lordes oliveira

@@ -39,9 +39,53 @@ export async function advanceRoom(room, store, now = Date.now()) {
 const lockRoom = (sql, code) => sql`SELECT pg_advisory_xact_lock(hashtextextended(${'trama-room:' + code}, 7))`;
 const roomCode = (c) => String(c || '').toUpperCase().trim().slice(0, 8);
 
+const PRESENCE_MS = 20000;
+
+// Quem está conectado em cada sala: vem da tabela de conexões (cada celular atualiza o seu
+// "seen" a cada consulta), e não do estado da sala — assim a consulta de 1 s não precisa
+// regravar a sala inteira.
+async function presence(sql, code, now) {
+  const rows = await sql`SELECT player_id, MAX(seen) AS seen FROM connections WHERE code = ${code} AND is_tv = false GROUP BY player_id`;
+  const online = new Set();
+  for (const r of rows) if (Number(r.seen) > now - PRESENCE_MS) online.add(r.player_id);
+  return online;
+}
+
+// Precisa do caminho completo (travar, avançar, gravar)? Só quando algo muda de verdade.
+function needsWrite(room, online, me, now) {
+  if (room.endsAt != null && room.endsAt + (room.phase === 'playing' ? GRACE_MS : 0) <= now) return true; // prazo vencido
+  if (room.phase === 'final' && !room.finalResult) return true;
+  if (me && !me.connected) return true; // voltou
+  for (const p of room.players.values()) if (p.connected !== online.has(p.id) && p.id !== me?.id) return true; // alguém caiu/voltou
+  if (room.phase === 'playing' && room.game.tick) {
+    // Arena Sobrevivência: só grava se a vida de alguém acabou agora
+    for (const p of room.players.values()) if (p.rs?.alive && p.rs.lifeEndsAt <= now) return true;
+  }
+  return false;
+}
+
 export async function handleMulti(sql, store, { session, msg }, now = Date.now()) {
   if (!/^[a-f0-9-]{36}$/.test(session || '')) throw new Error('Sessão inválida');
   const m = msg || { t: 'poll' };
+  // Caminho rápido da consulta periódica: só lê (sem trava e sem regravar a sala).
+  if (m.t === 'poll') {
+    const [c] = await sql`SELECT c.code, c.player_id, c.is_tv, c.seen, r.state FROM connections c LEFT JOIN rooms r ON r.code = c.code WHERE c.id = ${session}`;
+    if (c?.state) {
+      const room = restoreRoom(c.state);
+      const me = c.is_tv ? null : room.players.get(c.player_id);
+      const online = await presence(sql, room.code, now);
+      if (!c.is_tv) online.add(c.player_id);
+      if (c.is_tv || me) {
+        if (!needsWrite(room, online, me, now)) {
+          await sql`UPDATE connections SET seen = ${now} WHERE id = ${session}`;
+          const out = [];
+          for (const reaction of room.reactions || []) if (reaction.at > Number(c.seen)) out.push({ t: 'reaction', ...reaction });
+          out.push({ t: 'state', state: room.stateFor(c.player_id) });
+          return out;
+        }
+      }
+    }
+  }
   // A trava global só protege o "diretório": criar sala e procurar partida na Arena.
   if (m.t === 'create' || m.t === 'quick' || (m.t === 'watch' && m.create)) await sql`SELECT pg_advisory_xact_lock(71903201)`;
   if (Math.random() < 0.02) {
@@ -145,12 +189,16 @@ export async function handleMulti(sql, store, { session, msg }, now = Date.now()
     }
   } catch (e) { out.push({ t: 'error', message: e.message }); }
   if (room && conn.code === room.code) {
+    const online = await presence(sql, room.code, now);
     if (!conn.is_tv) {
+      online.add(conn.player_id);
       const p = room.players.get(conn.player_id);
-      if (p) { p.connected = true; p.lastSeen = now; }
+      if (p) { p.connected = true; delete p.lastSeen; }
     }
     for (const p of [...room.players.values()]) {
-      if (p.connected && p.lastSeen && p.lastSeen < now - 20000) room.disconnect(p.id);
+      if (p.connected && !online.has(p.id)) room.disconnect(p.id);
+      // quem voltou por outra conexão aparece de novo como conectado
+      else if (!p.connected && online.has(p.id) && p.rs !== undefined) p.connected = true;
     }
     await save(room);
     for (const reaction of room.reactions || []) if (reaction.at > Number(conn.seen)) out.push({ t: 'reaction', ...reaction });

@@ -16,6 +16,9 @@ import { createWsBoard } from './wsboard.js';
 import { createSudokuDuel } from './sudokuduel.js';
 import { createReveal } from './reveal.js';
 import { createTankReveal } from './tankreveal.js';
+import { COMBO, comboMult, hotLetterAt } from '../core/multimodes.js';
+import { mascotSay } from '../core/mascot.js';
+import { confetti } from '../core/fx.js';
 
 const SESSION_KEY = 'trama.session';
 const DIFF = { facil: 'Fácil', medio: 'Médio', dificil: 'Difícil' };
@@ -548,11 +551,16 @@ function gradePlay(s) {
       const r = await net.act('submit', { word: w, path });
       if (connectionTrouble(r)) { toast(root, 'Conexão instável. Envie a palavra de novo.', 'dup'); return { dup: true }; }
       // erro só pisca em vermelho/amarelo na grade; acerto mostra os pontos
-      if (r.ok) toast(root, `${r.mult > 1 ? `×${r.mult}! ` : ''}+${r.pts}${r.gain ? ` · ❤️+${r.gain}s` : ''}`, 'good');
+      // os pontos sobem da própria grade; o aviso só aparece para multiplicador ou tempo ganho
+      if (r.ok && (r.mult > 1 || r.gain)) toast(root, `${r.mult > 1 ? `×${String(r.mult).replace('.', ',')}! ` : ''}+${r.pts}${r.gain ? ` · +${r.gain}s de vida` : ''}`, 'good');
+      if (r.ok && r.combo) comboUi?.hit(r.combo);
       return r;
     },
   });
   const mode = modeOf(s);
+  const comboUi = mode.combo ? comboMeter() : null;
+  mascotSay('start');
+  const hotUi = mode.hot ? hotLetterUi(s.play, wg.el) : null;
   const myPts = h('strong', {}, '0');
   const myCount = h('strong', {}, '0');
   const aliveEl = h('strong', {}, '');
@@ -567,10 +575,11 @@ function gradePlay(s) {
     : hudBar(s,
         mode.teams ? h('div', { class: 'hud-item' }, h('span', {}, 'Times'), teamEl) : h('div', { class: 'hud-item' }, h('span', {}, 'Pontos'), myPts),
         h('div', { class: 'hud-item' }, h('span', {}, 'Palavras'), myCount));
-  const el = h('div', { class: 'playing' }, hud, h('div', { class: 'play-area' }, wg.el, deadEl));
+  const el = h('div', { class: 'playing' }, hud, comboUi?.el || '', hotUi?.el || '', h('div', { class: 'play-area' }, wg.el, deadEl));
   return {
     el,
     update(st) {
+      if (comboUi && st.play?.combo) comboUi.sync(st.play.combo);
       myPts.textContent = me()?.roundPoints ?? 0;
       myCount.textContent = st.play?.myWords?.length ?? 0;
       if (mode.survival) {
@@ -584,8 +593,67 @@ function gradePlay(s) {
         myCount.textContent = st.play?.teamWords?.length ?? myCount.textContent;
       }
     },
-    destroy: () => wg.destroy(),
+    destroy: () => { wg.destroy(); hotUi?.destroy(); },
   };
+}
+
+// Medidor do combo (Grade Combo): sobe a cada palavra seguida e esvazia em 7 s.
+function comboMeter() {
+  const label = h('strong', { class: 'cm-mult' }, '×1');
+  const count = h('span', { class: 'cm-count' }, 'Ache palavras em sequência!');
+  const bar = h('div', { class: 'cm-bar' }, h('span', {}));
+  const el = h('div', { class: 'combo-meter' }, h('div', { class: 'cm-top' }, icon('flame'), label, count), bar);
+  let timer = null;
+  const set = (combo, leftMs) => {
+    const mult = comboMult(Math.max(1, combo));
+    label.textContent = `×${String(mult).replace('.', ',')}`;
+    count.textContent = combo > 1 ? `${combo} seguidas` : 'Ache palavras em sequência!';
+    el.dataset.level = String(Math.min(4, Math.floor((mult - 1) * 2)));
+    const fill = bar.firstChild;
+    fill.style.transition = 'none';
+    fill.style.width = leftMs > 0 ? `${(leftMs / COMBO.windowMs) * 100}%` : '0%';
+    void fill.offsetWidth;
+    if (leftMs > 0) { fill.style.transition = `width ${leftMs}ms linear`; fill.style.width = '0%'; }
+    clearTimeout(timer);
+    if (leftMs > 0) timer = setTimeout(() => { count.textContent = 'Combo perdido'; label.textContent = '×1'; el.dataset.level = '0'; }, leftMs);
+  };
+  return {
+    el,
+    hit(combo) {
+      set(combo, COMBO.windowMs);
+      el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+    },
+    sync({ count: c, lastAt }) {
+      const left = lastAt ? lastAt + COMBO.windowMs - serverNow() : 0;
+      if (left > 0 && !el.dataset.synced) { el.dataset.synced = '1'; set(c, left); }
+    },
+  };
+}
+
+// Letra da Vez: mostra a letra quente, quanto falta para trocar e faz as peças brilharem.
+function hotLetterUi(play, gridEl) {
+  const letterEl = h('strong', { class: 'hl-letter' }, '');
+  const ring = h('span', { class: 'hl-ring' });
+  const nextEl = h('span', { class: 'hl-next' }, '');
+  const el = h('div', { class: 'hot-letter' }, h('span', { class: 'hl-label' }, 'Letra da vez'), h('span', { class: 'hl-chip' }, ring, letterEl), h('span', { class: 'hl-hint' }, '×2 por letra', nextEl));
+  let current = null;
+  const tick = () => {
+    const cur = hotLetterAt(play.hot, serverNow());
+    if (!cur) return;
+    const left = Math.max(0, cur.endsAt - serverNow());
+    ring.style.setProperty('--p', String(left / play.hot.everyMs));
+    nextEl.textContent = ` · troca em ${Math.ceil(left / 1000)}s`;
+    if (cur.letter !== current) {
+      current = cur.letter;
+      letterEl.textContent = current.toUpperCase();
+      el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap');
+      gridEl.querySelectorAll('.tile').forEach((t, i) => t.classList.toggle('hot', play.grid[i] === current));
+      if (current) mascotSay('hot', { letter: current.toUpperCase() });
+    }
+  };
+  tick();
+  const iv = setInterval(tick, 250);
+  return { el, destroy: () => clearInterval(iv) };
 }
 
 // ----- Grade (telão) -----
@@ -594,8 +662,10 @@ function gradeTv(s) {
   const tiles = h('div', { class: 'board tv-board', style: `--n:${s.play.size}` }, s.play.grid.map((l, i) => h('div', { class: `tile ${bonus[i] ? 'has-bonus' : ''}` }, h('span', {}, l.toUpperCase()), bonus[i] ? h('em', { class: 'bonus' }, bonus[i]) : '')));
   const board = liveBoard(s, { title: modeOf(s).survival ? '❤️ Vidas' : 'Placar ao vivo' });
   const teamEl = h('div', { class: 'tv-teams' });
+  const hotUi = s.play.hot ? hotLetterUi(s.play, tiles) : null;
   return {
-    el: h('div', { class: 'playing' }, hudBar(s), teamEl, h('div', { class: 'play-area' }, tiles, board.el)),
+    destroy: () => hotUi?.destroy(),
+    el: h('div', { class: 'playing' }, hudBar(s), teamEl, hotUi?.el || '', h('div', { class: 'play-area' }, tiles, board.el)),
     update: (st) => {
       board.update(st);
       if (st.teams) {
@@ -793,6 +863,12 @@ function resultsView(s) {
     onDone: () => {
       after.classList.remove('hidden');
       actions.classList.remove('hidden');
+      // Fio e confete: quem venceu comemora
+      if (!s.spectator) {
+        const top = s.standings[0];
+        const won = teamMode ? s.teams?.of?.[s.you] && (s.teams.totals[s.teams.of[s.you]] ?? 0) >= Math.max(...Object.values(s.teams.totals)) : top?.id === s.you && top.total > 0;
+        if (final) { mascotSay(won ? 'win' : 'lose'); if (won) confetti(); } else mascotSay('round');
+      } else if (final) confetti({ count: 120 });
       if (final && !s.spectator) {
         showGlobalPosition(s, globalEl);
         showRatingAndAchievements(s, progressEl);

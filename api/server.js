@@ -96,6 +96,9 @@ wss.on('connection', (ws) => {
   const pollEvery = () => (phase === 'playing' || phase === 'countdown' ? 1000 : 2500) + (failures ? Math.min(4000, 1000 * failures) : 0);
   const poll = async () => { if (closed) return; if (!queued) await run({ t: 'poll' }); if (!closed) timer = setTimeout(poll, pollEvery()); };
   timer = setTimeout(poll, 1000);
-  ws.on('close', () => { closed = true; clearTimeout(timer); run({ t: 'disconnect' }); });
+  // a função da Vercel vive no máximo 300 s: aos 240 s o celular abre outra conexão e volta
+  // para a sala sozinho (sem aviso de "reconectando")
+  const rotate = setTimeout(() => send({ t: 'rotate' }), Number(process.env.TRAMA_ROTATE_MS) || 240000);
+  ws.on('close', () => { closed = true; clearTimeout(timer); clearTimeout(rotate); run({ t: 'disconnect' }); });
 });
 export default server;

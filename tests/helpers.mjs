@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { setDictWords } from '../js/core/dict.js';
+import { loadServerDict } from '../server/dict-node.js';
 
+// Mesmo dicionário do servidor (com bloqueadas e formas flexionadas).
 export function loadTestDict() {
-  const read = (f) => readFileSync(new URL(`../data/${f}`, import.meta.url), 'utf8').split('\n');
-  setDictWords(read('palavras.txt'), read('comuns.txt'));
+  loadServerDict();
 }
 
 // Relógio e timers falsos para testar as salas sem esperar de verdade.

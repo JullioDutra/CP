@@ -212,6 +212,7 @@ export class Room {
     if (this.phase !== 'lobby') return;
     this.round = 0;
     this.rounds = [];
+    this.agg = {};
     this.rd = null;
     this.finalResult = null;
     for (const p of this.players.values()) p.total = 0;
@@ -245,6 +246,7 @@ export class Room {
     this.phase = 'lobby';
     this.round = 0;
     this.rounds = [];
+    this.agg = {};
     this.rd = null;
     this.finalResult = null;
     this.crownEvent = null;
@@ -347,6 +349,7 @@ export class Room {
         if (p) p.total += s;
       }
       this.rounds.push({ round: this.round, mode: this.options.mode, scores, ...detail });
+      this.compactRounds();
       this.phase = this.round >= this.options.rounds ? 'final' : 'reveal';
       this.endsAt = null;
       this.closing = false;
@@ -395,20 +398,7 @@ export class Room {
     const teamTot = mode.teams ? this.teamTotals() : null;
     const players = standings.map((st) => {
       const p = this.players.get(st.id);
-      let words = 0, unique = 0, longest = null;
-      for (const r of this.rounds) {
-        const d = r.players?.[st.id];
-        if (!d) continue;
-        if (r.type === 'grade') {
-          words += d.words.length;
-          unique += d.unique;
-          for (const w of d.words) if (!longest || w.w.length > longest.length) longest = w.w;
-        } else if (r.type === 'wordsearch') {
-          words += d.found.length;
-        } else if (r.type === 'sudoku') {
-          words += d.filled;
-        }
-      }
+      const { words = 0, unique = 0, longest = null } = this.agg?.[st.id] || {};
       let place = standings.findIndex((x) => x.total === st.total) + 1;
       if (teamTot) {
         // nos Times, a colocação é a do time
@@ -419,6 +409,23 @@ export class Room {
       return { profileId: p.profileId, name: p.name, avatar: p.avatar, score: st.total, place, words, unique, longest };
     });
     return { mode: this.options.mode, variant, kind: this.public ? 'arena' : 'multi', room: this.code, players };
+  }
+
+  // Rodadas antigas ficam só com o placar; os totais de cada jogador (palavras, únicas,
+  // maior palavra) vão para this.agg. Mantém o estado da sala pequeno no banco.
+  compactRounds() {
+    this.agg ||= {};
+    const last = this.rounds[this.rounds.length - 1];
+    for (const [id, d] of Object.entries(last.players || {})) {
+      const a = (this.agg[id] ||= { words: 0, unique: 0, longest: null });
+      if (last.type === 'grade') {
+        a.words += d.words.length;
+        a.unique += d.unique;
+        for (const w of d.words) if (!a.longest || w.w.length > a.longest.length) a.longest = w.w;
+      } else if (last.type === 'wordsearch') a.words += d.found.length;
+      else if (last.type === 'sudoku') a.words += d.filled;
+    }
+    this.rounds = this.rounds.map((r, i) => (i === this.rounds.length - 1 ? r : { round: r.round, mode: r.mode, type: r.type, scores: r.scores }));
   }
 
   // ---------- estado enviado a cada jogador / telão ----------

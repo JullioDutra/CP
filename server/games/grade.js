@@ -3,7 +3,7 @@
 // repetida só aparece nas estatísticas do fim da rodada (o "tanque").
 import { makeGrid, findPath, isAdjacent, wordPoints, sortMissed, longestWord, MIN_LETTERS } from '../../js/core/letters.js';
 import { isWord, normalize } from '../../js/core/dict.js';
-import { scoreRound, bonusCells, bonusMultiplier, SURVIVAL } from '../../js/core/multimodes.js';
+import { scoreRound, bonusCells, bonusMultiplier, SURVIVAL, COMBO, comboMult, HOT, hotLetterAt, hotMult } from '../../js/core/multimodes.js';
 
 const MIN_WORDS = { 4: 40, 5: 90, 6: 150 };
 
@@ -23,6 +23,13 @@ const game = {
     const { grid, words } = makeGrid(room.rng, size, { minWords: MIN_WORDS[size] || 40, tries: size === 6 ? 25 : 60 });
     const bonus = room.mode.bonus ? bonusCells(room.rng, size) : {};
     room.rd = { grid, size, possible: words, bonus, eliminated: [] };
+    if (room.mode.hot) {
+      // letras quentes: as da grade, em ordem sorteada (as mais frequentes aparecem primeiro)
+      const counts = {};
+      for (const l of grid) counts[l] = (counts[l] || 0) + 1;
+      const letters = room.rng.shuffle(Object.keys(counts)).sort((a, b) => counts[b] - counts[a]).slice(0, 8);
+      room.rd.hot = { letters: room.rng.shuffle(letters), startedAt: room.now(), everyMs: HOT.everyMs };
+    }
     for (const p of room.players.values()) p.rs = newPlayerState(room);
   },
 
@@ -81,10 +88,12 @@ const game = {
 
   publicFor(room, p) {
     const rd = room.rd;
-    const out = { grid: rd.grid, size: rd.size, bonus: rd.bonus, possible: rd.possible.length };
+    const out = { grid: rd.grid, size: rd.size, bonus: rd.bonus };
+    if (rd.hot) out.hot = rd.hot;
     if (p) {
       out.myWords = p.rs.words;
       out.myAi = p.rs.ai;
+      if (room.mode.combo) out.combo = { count: p.rs.combo || 0, lastAt: p.rs.lastAt || 0, windowMs: COMBO.windowMs };
       if (room.mode.survival) { out.lifeEndsAt = p.rs.lifeEndsAt; out.alive = p.rs.alive; }
       if (room.mode.teams) out.teamWords = teammates(room, p).flatMap((q) => q.rs.words);
     }
@@ -167,8 +176,20 @@ const game = {
 function accept(room, p, word, path, viaAi) {
   if (p.rs.words.includes(word)) return { ok: false, dup: true, reason: 'Você já achou essa', word };
   if (room.mode.teams && teammates(room, p).some((q) => q !== p && q.rs.words.includes(word))) return { ok: false, dup: true, reason: 'Seu time já achou essa', word };
-  const mult = bonusMultiplier(path, room.rd.bonus);
-  const pts = wordPoints(word) * mult;
+  const t = room.now();
+  let mult = bonusMultiplier(path, room.rd.bonus);
+  let combo = 0, hot = null;
+  if (room.mode.combo) {
+    combo = p.rs.lastAt && t - p.rs.lastAt <= COMBO.windowMs ? (p.rs.combo || 0) + 1 : 1;
+    p.rs.combo = combo;
+    p.rs.lastAt = t;
+    mult *= comboMult(combo);
+  }
+  if (room.mode.hot) {
+    hot = hotLetterAt(room.rd.hot, t)?.letter || null;
+    mult *= hotMult(word, hot);
+  }
+  const pts = Math.round(wordPoints(word) * mult);
   p.rs.words.push(word);
   p.rs.wordPts[word] = pts;
   if (viaAi) p.rs.ai.push(word);
@@ -182,7 +203,7 @@ function accept(room, p, word, path, viaAi) {
     for (const q of room.players.values()) if (q !== p && q.rs?.alive) q.rs.lifeEndsAt -= SURVIVAL.stealMs;
   }
   room.touch();
-  return { ok: true, word, pts, mult, ai: viaAi, gain: gain / 1000 };
+  return { ok: true, word, pts, mult, ai: viaAi, gain: gain / 1000, combo: room.mode.combo ? combo : undefined, hot: hot || undefined };
 }
 
 // Caminho válido para a palavra: usa o que o jogador desenhou ou procura um na grade.

@@ -70,6 +70,7 @@ const MODE_GLYPH = {
   'novo-sobrevivencia': 'hourglass', 'novo-diario': 'calendar',
   'grupo-classico': 'grid', 'corrida-cacapalavras': 'search', 'sudoku-duelo': 'sudoku',
   'grupo-bonus': 'gem', 'arena-sobrevivencia': 'hourglass', 'times': 'swords',
+  'grupo-combo': 'flame', 'grupo-letra': 'target',
 };
 export const modeIcon = (id, cls = '') => icon(MODE_GLYPH[id] || 'grid', cls);
 

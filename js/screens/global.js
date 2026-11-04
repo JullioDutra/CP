@@ -1,6 +1,7 @@
 // Telas da Fase 3: ranking global (servidor) e perfil sem login.
 import { h, toast } from '../core/ui.js';
 import { icon, modeIcon as modeGlyph, achievementIcon } from '../core/icons.js';
+import { mascotToggle } from '../core/mascot.js';
 import { MULTI_MODES, AVATARS, formatOption } from '../core/multimodes.js';
 import { SOLO_RANKED } from '../core/solo.js';
 import { todayKey } from '../core/rng.js';
@@ -207,6 +208,10 @@ export async function showProfile(ctx) {
               h('small', { class: 'muted' }, fmtDate(r.at)))))
           : h('p', { class: 'empty' }, 'Jogue uma partida em grupo ou um modo solo com ranking para ver seu histórico aqui.')),
       themesCard(stats.achievements),
+      h('section', { class: 'card mascot-card' },
+        h('h3', {}, 'Fio, o novelo ajudante'),
+        h('p', { class: 'hint' }, 'Ele aparece no canto da tela comentando as jogadas: palavras grandes, combos, a letra quente e os últimos segundos.'),
+        mascotToggle('btn ghost')),
       h('section', { class: 'card' },
         h('h3', {}, icon('phone', 'inline'), ' Usar este perfil em outro aparelho'),
         h('p', { class: 'hint' }, 'Copie o código e cole no outro aparelho. Não compartilhe: quem tiver o código usa o seu perfil.'),

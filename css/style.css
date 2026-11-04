@@ -995,3 +995,105 @@ body.time-critical .board, body.time-critical .wordgrid { animation: shake .5s 1
 .cb-icon .ico { position: absolute; top: -12px; width: 24px; height: 24px; }
 .cb-avatar { font-size: 1.8rem; }
 .host-mark { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 0.7rem; font-weight: 800; vertical-align: 2px; }
+
+/* =========================================================
+   v4 — Fio (personagem), novos modos e animações
+   ========================================================= */
+:root { --fio: #f59e8b; --fio-dark: #c2553f; --fio-yarn: #e47b64; --hot: #f97316; --hot-soft: #ffedd5; }
+@media (prefers-color-scheme: dark) { :root { --hot-soft: #3b2412; } }
+
+/* ----- Fio ----- */
+.fio { position: fixed; z-index: 45; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); display: flex; align-items: flex-end; gap: 6px; pointer-events: none; transform: translateY(140%); transition: transform .45s cubic-bezier(.3,1.5,.5,1); }
+.fio.show { transform: translateY(0); }
+.fio-body { pointer-events: auto; appearance: none; border: 0; background: none; padding: 0; width: 76px; height: 76px; cursor: pointer; filter: drop-shadow(0 6px 10px rgb(0 0 0 / .18)); }
+.fio.talk .fio-body { animation: fio-hop .6s cubic-bezier(.3,1.6,.5,1); }
+@keyframes fio-hop { 0% { transform: translateY(0) scale(1, 1); } 30% { transform: translateY(-14px) scale(.94, 1.06); } 60% { transform: translateY(0) scale(1.08, .92); } 100% { transform: none; } }
+.fio-bubble { pointer-events: none; max-width: min(240px, 62vw); margin-bottom: 52px; padding: 10px 14px; border-radius: 16px 16px 4px 16px; background: var(--surface); color: var(--text); font-weight: 800; font-size: .95rem; line-height: 1.25; box-shadow: var(--shadow-lg); border: 1.5px solid var(--line); opacity: 0; transform: scale(.7) translateY(8px); transform-origin: bottom right; transition: opacity .2s, transform .3s cubic-bezier(.3,1.5,.5,1); }
+.fio.show .fio-bubble { opacity: 1; transform: none; transition-delay: .12s; }
+.fio-svg { width: 100%; height: 100%; overflow: visible; }
+.fio-svg .fio-ball { fill: var(--fio); }
+.fio-svg .fio-yarn { stroke: var(--fio-yarn); opacity: .75; }
+.fio-svg .fio-thread { stroke: var(--fio-dark); }
+.fio-svg .fio-eye { fill: #1f2937; transform-origin: center; transform-box: fill-box; animation: fio-blink 4.5s infinite; }
+.fio-svg .fio-shine { fill: #fff; }
+.fio-svg .fio-cheek { fill: #fb7185; opacity: .45; }
+.fio-svg .fio-mouth { stroke: #1f2937; fill: none; display: none; }
+.fio-svg .m-wow { fill: #1f2937; stroke: none; }
+.fio[data-mood='happy'] .m-happy, .fio:not([data-mood]) .m-happy, .fio[data-mood='wow'] .m-wow, .fio[data-mood='sad'] .m-sad, .fio[data-mood='nervous'] .m-nervous { display: inline; }
+.mascot-toggle .fio-svg .m-happy { display: inline; }
+.fio[data-mood='sad'] .fio-eye { transform: scaleY(.6); }
+.fio[data-mood='nervous'] .fio-body { animation: fio-shake .35s 3; }
+@keyframes fio-shake { 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+@keyframes fio-blink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+.fio-svg.mini { width: 22px; height: 22px; flex: none; }
+.mascot-toggle[aria-pressed='false'] .fio-svg { filter: grayscale(1); opacity: .6; }
+.mascot-card .hint { margin-top: 0; }
+
+/* ----- Grade Combo ----- */
+.combo-meter { max-width: 520px; margin: 0 auto 12px; padding: 10px 14px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); display: grid; gap: 6px; }
+.cm-top { display: flex; align-items: center; gap: 10px; color: var(--hot); }
+.cm-mult { font-family: var(--display); font-size: 1.6rem; line-height: 1; color: var(--text); min-width: 2.6ch; }
+.cm-count { color: var(--muted); font-weight: 800; font-size: .9rem; }
+.cm-bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.cm-bar span { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #fb923c, #f43f5e); }
+.combo-meter[data-level='2'] .cm-mult, .combo-meter[data-level='3'] .cm-mult { color: #ea580c; }
+.combo-meter[data-level='4'] { box-shadow: inset 0 0 0 2px #f43f5e, 0 0 24px rgb(244 63 94 / .25); }
+.combo-meter[data-level='4'] .cm-mult { color: #e11d48; }
+.combo-meter.bump .cm-mult { animation: cm-bump .45s cubic-bezier(.3,1.6,.5,1); }
+.combo-meter.bump .cm-top .ico { animation: cm-flame .45s; }
+@keyframes cm-bump { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
+@keyframes cm-flame { 50% { transform: scale(1.5) rotate(-10deg); } }
+
+/* ----- Letra da Vez ----- */
+.hot-letter { max-width: 520px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; }
+.hl-label { font-size: .75rem; font-weight: 900; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.hl-chip { position: relative; width: 52px; height: 52px; display: grid; place-items: center; }
+.hl-ring { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(var(--hot) calc(var(--p, 1) * 360deg), var(--surface-2) 0); }
+.hl-ring::after { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: var(--hot-soft); }
+.hl-letter { position: relative; font-family: var(--display); font-size: 1.7rem; color: var(--hot); }
+.hl-hint { font-weight: 800; color: var(--muted); font-size: .88rem; }
+.hot-letter.swap .hl-chip { animation: hl-swap .6s cubic-bezier(.3,1.6,.5,1); }
+@keyframes hl-swap { 0% { transform: scale(.3) rotate(-90deg); } 100% { transform: none; } }
+.tile.hot { background: var(--hot-soft); border-color: var(--hot); box-shadow: 0 3px 0 var(--hot), 0 0 0 3px color-mix(in srgb, var(--hot) 25%, transparent); animation: hot-glow 1.6s ease-in-out infinite; }
+.tile.hot span { color: #c2410c; }
+@keyframes hot-glow { 50% { box-shadow: 0 3px 0 var(--hot), 0 0 0 6px color-mix(in srgb, var(--hot) 12%, transparent); } }
+.tile.hot.sel { background: var(--sel); }
+
+/* ----- traço sobre as letras ----- */
+.board.fill { position: relative; }
+.trace { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 2; }
+.trace polyline { fill: none; stroke: var(--primary); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; opacity: .35; }
+
+/* ----- pontos que sobem e confete ----- */
+.float-pts { position: fixed; z-index: 60; transform: translate(-50%, 0); pointer-events: none; font-family: var(--display); font-weight: 800; font-size: 1.5rem; color: var(--good); text-shadow: 0 2px 0 var(--surface), 0 0 12px var(--surface); animation: float-up 1.1s cubic-bezier(.2,.8,.2,1) forwards; }
+.float-pts.big { font-size: 2.1rem; color: #ea580c; }
+@keyframes float-up { 0% { transform: translate(-50%, 0) scale(.6); opacity: 0; } 15% { transform: translate(-50%, -12px) scale(1.15); opacity: 1; } 100% { transform: translate(-50%, -80px) scale(1); opacity: 0; } }
+.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 70; overflow: hidden; }
+.confetti i { position: absolute; top: -12px; width: 9px; height: 14px; border-radius: 2px; animation: confetti-fall linear forwards; }
+@keyframes confetti-fall { 0% { transform: translate(0, 0) rotate(0); opacity: 1; } 100% { transform: translate(var(--drift), 105vh) rotate(var(--rot)); opacity: .9; } }
+
+/* ----- animações gerais ----- */
+#app > * { animation: screen-in .35s cubic-bezier(.2,.8,.2,1) both; }
+#app > *:nth-child(2) { animation-delay: .04s; }
+#app > *:nth-child(3) { animation-delay: .08s; }
+#app > *:nth-child(4) { animation-delay: .12s; }
+@keyframes screen-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.btn { transition: transform .1s, box-shadow .15s, background .15s; }
+.btn:active:not(:disabled) { transform: scale(.96); }
+.tile.sel { animation: tile-pick .22s cubic-bezier(.3,1.6,.5,1); }
+@keyframes tile-pick { 0% { transform: translateY(2px) scale(.9); } 100% { transform: translateY(2px) scale(1); } }
+.tile.good { animation: tile-good .45s cubic-bezier(.3,1.6,.5,1); }
+@keyframes tile-good { 40% { transform: scale(1.12) rotate(-2deg); } 100% { transform: none; } }
+.mode-card .mode-icon { transition: transform .25s cubic-bezier(.3,1.6,.5,1); }
+.mode-card:hover .mode-icon { transform: rotate(-8deg) scale(1.1); }
+.wm-tiles span { animation: wm-in .5s cubic-bezier(.3,1.6,.5,1) both; }
+.wm-tiles span:nth-child(2) { animation-delay: .08s; } .wm-tiles span:nth-child(3) { animation-delay: .16s; } .wm-tiles span:nth-child(4) { animation-delay: .24s; }
+@keyframes wm-in { from { transform: scale(0) rotate(-30deg); } to { transform: none; } }
+.hero { position: relative; overflow: hidden; }
+.hero::before { content: 'T R A M A P A L A V R A S'; position: absolute; right: -10px; top: -14px; font: 900 5.5rem/1 var(--display); color: var(--primary); opacity: .045; letter-spacing: .25em; white-space: nowrap; pointer-events: none; animation: hero-drift 30s linear infinite; }
+@keyframes hero-drift { from { transform: translateX(0); } to { transform: translateX(-35%); } }
+.hero > * { position: relative; }
+@media (prefers-reduced-motion: reduce) {
+  #app > *, .tile.sel, .tile.good, .wm-tiles span, .hero::before, .fio.talk .fio-body, .fio-svg .fio-eye, .tile.hot, .combo-meter.bump .cm-mult { animation: none !important; }
+  .fio { transition: none; }
+}
