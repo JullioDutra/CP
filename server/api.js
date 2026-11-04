@@ -7,6 +7,15 @@ import { makeGrid } from '../js/core/letters.js';
 import { SOLO_RANKED, MIN_WORDS, dailyPuzzle, scoreWords } from '../js/core/solo.js';
 import { cleanName } from './room.js';
 import { seasonOf } from '../js/core/leagues.js';
+import { newSeed, setupWordSearch, scoreWordSearch, setupSudoku, scoreSudokuLog, replaySurvival, WS_TIME } from '../js/core/solo-verify.js';
+
+// Confere uma partida com semente (refaz o jogo no servidor) e devolve os pontos oficiais.
+function verifySeeded(mode, data, log, elapsedSec) {
+  if (mode === 'classico-cacapalavras') return scoreWordSearch(setupWordSearch(data.seed, data.variant), log, WS_TIME - elapsedSec + 3);
+  if (mode === 'classico-sudoku') return scoreSudokuLog(setupSudoku(data.seed, data.variant), data.variant, log, elapsedSec);
+  if (mode === 'novo-sobrevivencia') return replaySurvival(data.seed, log, elapsedSec + 3);
+  return { score: 0, words: 0, longest: null };
+}
 
 const PERIODS = ['hoje', 'semana', 'sempre'];
 export const RANKED_MODES = new Set([...Object.keys(MULTI_MODES), ...Object.keys(SOLO_RANKED)]);
@@ -129,7 +138,10 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
       const cfg = SOLO_RANKED[b.modo];
       if (!cfg) return [400, { erro: 'Modo sem ranking global' }];
       let variant, data, ranked = true;
-      if (cfg.daily) {
+      if (cfg.seeded) {
+        variant = cfg.variants.includes(String(b.variante)) ? String(b.variante) : cfg.variants[0];
+        data = { seed: newSeed(), variant };
+      } else if (cfg.daily) {
         variant = brDay(now());
         // aceita o dia do aparelho se for ontem/hoje/amanhã em relação ao servidor (fusos)
         if (/^\d{4}-\d{2}-\d{2}$/.test(b.dia || '') && Math.abs(Date.parse(b.dia) - Date.parse(variant)) <= 86400000) variant = b.dia;
@@ -144,6 +156,7 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
       }
       const ticket = (await store.createTicket({ profileId: p.id, mode: b.modo, variant, data, duration: cfg.duration, ranked }));
       return [200, { ticket, ...data, variante: variant, duracao: cfg.duration, ranked }];
+      // (modos com semente devolvem { seed }; os de grade devolvem { grid, size, bonus })
     },
 
     'POST /api/solo/fim': async (req) => {
@@ -155,8 +168,13 @@ export function createApi({ verifier, store, now = Date.now, arenaStatus = () =>
       if (t.alreadyUsed) return [409, { erro: 'Essa partida já foi enviada' }];
       const elapsed = now() - t.started_at;
       if (elapsed > t.duration * 1000 + GRACE_MS) return [200, { ok: false, ranked: false, erro: 'Tempo da partida excedido; não entrou no ranking' }];
-      const words = Array.isArray(b.palavras) ? b.palavras : [];
-      const r = scoreWords(t.data, words);
+      let r;
+      if (t.data?.seed != null) {
+        const v = verifySeeded(t.mode, t.data, b.log && typeof b.log === 'object' ? b.log : {}, elapsed / 1000);
+        r = { score: v.score, accepted: { length: v.words }, rejected: [], longest: v.longest };
+      } else {
+        r = scoreWords(t.data, Array.isArray(b.palavras) ? b.palavras : []);
+      }
       let conquistas = [];
       if (t.ranked && r.score > 0) {
         conquistas = (await store.recordMatch({

@@ -1,16 +1,15 @@
 // MODO CLÁSSICO — Caça-Palavras Temático
 // Palavras escondidas numa grade 12×12, em 8 direções. 4 minutos.
 import { h, createTimer, fmtTime, toast, hud } from '../../core/ui.js';
-import { createRng } from '../../core/rng.js';
-import { buildWordSearch, buildMixedSearch, attachSelection, matchPlaced, matchFree, WS_SIZE, MIX_EXTRA_MIN, MIX_EXTRA_PTS } from '../../core/wordsearch.js';
+import { attachSelection, matchPlaced, matchFree, WS_SIZE, MIX_EXTRA_MIN, MIX_EXTRA_PTS } from '../../core/wordsearch.js';
 import { isCommon } from '../../core/dict.js';
-import { TEMAS } from '../../../data/temas.js';
-import { MISTURA } from '../../../data/mistura.js';
+import { setupWordSearch, newSeed } from '../../core/solo-verify.js';
+import { startOnline } from '../../core/online-solo.js';
 
 const SIZE = WS_SIZE;
 const TIME = 240;
 
-export { buildWordSearch };
+export { buildWordSearch } from '../../core/wordsearch.js';
 
 export default {
   id: 'classico-cacapalavras',
@@ -21,6 +20,10 @@ export default {
   options: { key: 'tema', label: 'Tema', choices: [['surpresa', 'Tema surpresa'], ['mistura', 'Mistura (sem tema)']], default: 'surpresa' },
   rankingKey: (opts) => (opts.tema === 'mistura' ? 'classico-cacapalavras-mistura' : 'classico-cacapalavras'),
   rankingVariants: [['classico-cacapalavras', 'Tema'], ['classico-cacapalavras-mistura', 'Mistura']],
+  globalRanking: true,
+  globalVariant: (opts) => (opts.tema === 'mistura' ? 'mistura' : 'surpresa'),
+  // pede a semente ao servidor para a partida valer no ranking global
+  prepare: (opts) => startOnline('classico-cacapalavras', { variante: opts.tema === 'mistura' ? 'mistura' : 'surpresa' }),
   rules: [
     'Tema surpresa: encontre as 10 palavras do tema, em linha reta (8 direções, até de trás para frente). Arraste do começo ao fim.',
     'Mistura: palavras de todo tipo, cruzadas umas nas outras — algumas dobram juntando horizontal e vertical. Arraste passando letra por letra.',
@@ -28,11 +31,11 @@ export default {
     'Pontos: 10 por letra (extras: 4 por letra) + 2 por segundo restante se achar todas da lista.',
   ],
   start(root, api, opts = {}) {
-    const rng = createRng();
-    const mix = opts.tema === 'mistura';
-    const temaNome = mix ? 'Mistura' : rng.pick(Object.keys(TEMAS));
-    const { grid, placed } = mix ? buildMixedSearch(rng, rng.shuffle(MISTURA)) : buildWordSearch(rng, rng.shuffle(TEMAS[temaNome]));
+    const online = opts.online?.seed != null ? opts.online : null;
+    const tema = online?.variante || (opts.tema === 'mistura' ? 'mistura' : 'surpresa');
+    const { grid, placed, temaNome, mix } = setupWordSearch(online ? online.seed : newSeed(), tema);
     const extras = new Set();
+    const extraCells = []; // caminhos das palavras extras (o servidor confere)
     const foundIds = new Set();
     const items = [];
     let score = 0;
@@ -70,6 +73,7 @@ export default {
       const w = line.map((i) => grid[i]).join('');
       if (mix && w.length >= MIX_EXTRA_MIN && isCommon(w) && !extras.has(w) && !placed.some((p) => p.word === w)) {
         extras.add(w);
+        extraCells.push(line.slice());
         const pts = w.length * MIX_EXTRA_PTS;
         score += pts;
         items.push({ label: w, pts });
@@ -89,7 +93,7 @@ export default {
       ended = true;
       timer.stop();
       let bonus = 0;
-      if (all) { bonus = Math.ceil(timer.remaining) * 2; score += bonus; items.push({ label: '⏱ Bônus', pts: bonus }); }
+      if (all) { bonus = Math.ceil(timer.remaining) * 2; score += bonus; items.push({ label: 'Bônus de tempo', pts: bonus }); }
       placed.forEach((p, k) => { if (!foundIds.has(k)) p.cells.forEach((i) => cells[i].classList.add('reveal')); });
       board.classList.add('disabled');
       api.end({
@@ -97,6 +101,7 @@ export default {
         revealItems: items,
         summary: [['Tema', temaNome], ['Da lista', foundIds.size], ...(mix ? [['Extras', extras.size]] : []), ['Bônus de tempo', bonus]],
         extra: h('p', {}, 'Palavras não encontradas ficaram destacadas na grade.'),
+        online: online && { ticket: online.ticket, log: { found: [...foundIds], extras: extraCells, remaining: all ? timer.remaining : 0 } },
       });
     }
 

@@ -91,7 +91,7 @@ export async function showRanking(ctx, { mode = null, tab = null } = {}) {
     content.replaceChildren(
       ...groups.map((g) => h('div', { class: 'tab-group' }, h('span', { class: 'tab-title' }, g),
         GLOBAL_MODES.filter((x) => x.group === g).map((x) => h('button', { class: `chip ${x.id === state.mode ? 'on' : ''}`, onclick: () => { state.mode = x.id; render(); } }, x.name)))),
-      m.variants.length ? chipRow(m.id.startsWith('sudoku') ? 'Nível' : 'Grade', m.variants, state.variant, (v) => { state.variant = v; render(); }) : '',
+      m.variants.length ? chipRow(/sudoku/.test(m.id) ? 'Nível' : /cacapalavras/.test(m.id) ? 'Tema' : 'Grade', m.variants, state.variant, (v) => { state.variant = v; render(); }) : '',
       m.daily ? h('p', { class: 'hint' }, `Desafio de hoje (${todayKey().split('-').reverse().join('/')}): só a primeira partida de cada pessoa vale.`) : chipRow('Período', PERIODS, state.period, (v) => { state.period = v; render(); }),
       list);
     try {

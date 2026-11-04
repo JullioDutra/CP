@@ -23,6 +23,10 @@ export function dailyPoints(word, path, bonus) {
 export const SOLO_RANKED = {
   'classico-grade': { name: 'Grade Relâmpago', icon: '⚡', category: 'classico', duration: 180, variants: ['4', '5', '6'], variantLabel: (v) => `${v}×${v}` },
   'novo-diario': { name: 'Desafio do Dia', icon: '📅', category: 'novo', duration: 120, daily: true, variantLabel: (v) => v.split('-').reverse().join('/') },
+  // modos com semente: o servidor sorteia, o celular joga, o servidor refaz e confere (solo-verify.js)
+  'classico-cacapalavras': { name: 'Caça-Palavras', icon: '🔍', category: 'classico', duration: 240, seeded: true, variants: ['surpresa', 'mistura'], variantLabel: (v) => (v === 'mistura' ? 'Mistura' : 'Tema surpresa') },
+  'classico-sudoku': { name: 'Sudoku', icon: '🔢', category: 'classico', duration: 3600, seeded: true, variants: ['facil', 'medio', 'dificil'], variantLabel: (v) => ({ facil: 'Fácil', medio: 'Médio', dificil: 'Difícil' })[v] || v },
+  'novo-sobrevivencia': { name: 'Sobrevivência', icon: '⏳', category: 'novo', duration: 1800, seeded: true, variants: ['5'], variantLabel: () => '5×5' },
 };
 
 export const MIN_WORDS = { 4: 35, 5: 90, 6: 150 };

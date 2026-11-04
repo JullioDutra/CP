@@ -12,6 +12,7 @@ export async function startOnline(modo, extra = {}) {
   }
 }
 
-export function finishOnline(ticket, palavras) {
-  return api('solo/fim', { method: 'POST', body: { ticket, palavras } });
+// palavras: modos de grade; log: modos com semente (registro da partida)
+export function finishOnline(ticket, palavras, log) {
+  return api('solo/fim', { method: 'POST', body: { ticket, palavras, log } });
 }

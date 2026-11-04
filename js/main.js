@@ -205,7 +205,7 @@ function play(m, baseOpts = {}) {
 // Envia a partida solo ao servidor, que confere as palavras e devolve a posição no ranking global.
 function onlineResult(result, m) {
   const el = h('div', { class: 'global-pos' }, h('p', { class: 'muted' }, 'Enviando para o ranking global…'));
-  (result._online ||= finishOnline(result.online.ticket, result.online.palavras))
+  (result._online ||= finishOnline(result.online.ticket, result.online.palavras, result.online.log))
     .then((r) => {
       if (!r.ok) { el.replaceChildren(h('p', { class: 'notice' }, r.erro || 'A partida não entrou no ranking global.')); return; }
       if (!r.ranked) { el.replaceChildren(h('p', { class: 'muted' }, 'Partida de treino: não conta no ranking global.')); return; }
@@ -228,10 +228,10 @@ function onlineResult(result, m) {
 async function showSoloReveal(m, opts, result) {
   const rankId = m.rankingKey ? m.rankingKey(opts) : m.id;
   const record = getRanking(rankId)[0]?.score || 0;
-  if (result.online) result._online = finishOnline(result.online.ticket, result.online.palavras).catch((e) => ({ ok: false, erro: e.message }));
+  if (result.online) result._online = finishOnline(result.online.ticket, result.online.palavras, result.online.log).catch((e) => ({ ok: false, erro: e.message }));
   let top = null;
   if (m.globalRanking && (await serverStatus())) {
-    const variant = m.id === 'novo-diario' ? todayKey() : opts.size || '4';
+    const variant = m.id === 'novo-diario' ? todayKey() : m.globalVariant ? m.globalVariant(opts) : opts.size || '4';
     top = await Promise.race([
       api(`ranking?modo=${m.id}&variante=${variant}&periodo=${m.id === 'novo-diario' ? 'sempre' : 'hoje'}`).then((r) => r.rows[0] || null).catch(() => null),
       new Promise((r) => setTimeout(() => r(null), 1200)),

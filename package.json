@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node --no-warnings=ExperimentalWarning server/index.js",
-    "test": "node tests/letters.test.mjs && node tests/modes.test.mjs && node tests/ai.test.mjs && node tests/multi.test.mjs && node tests/reveal.test.mjs && node tests/pwa.test.mjs && node tests/static.test.mjs && node --no-warnings=ExperimentalWarning tests/fase4.test.mjs && node --no-warnings=ExperimentalWarning tests/store.test.mjs && node tests/durable.test.mjs && node tests/postgres.test.mjs",
+    "test": "node tests/letters.test.mjs && node tests/modes.test.mjs && node tests/ai.test.mjs && node tests/multi.test.mjs && node tests/reveal.test.mjs && node tests/pwa.test.mjs && node tests/static.test.mjs && node --no-warnings=ExperimentalWarning tests/fase4.test.mjs && node --no-warnings=ExperimentalWarning tests/store.test.mjs && node tests/solo-verify.test.mjs && node tests/durable.test.mjs && node tests/postgres.test.mjs",
     "build:dict": "node data/build-dict.cjs palavras.txt data/palavras.txt",
     "verificar": "node scripts/verificar-palavras.mjs",
     "build": "node scripts/build-web.mjs"

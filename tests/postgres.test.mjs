@@ -11,6 +11,7 @@ import { handleMulti } from '../server/durable-rooms.js';
 import { PG_OPTIONS } from '../server/backend.js';
 import { solve, findPath, wordPoints } from '../js/core/letters.js';
 import { createVerifier } from '../server/ai.js';
+import { setupSudoku, setupWordSearch } from '../js/core/solo-verify.js';
 
 const URL_PG = process.env.TRAMA_TEST_PG;
 if (!URL_PG) { console.log('pulado postgres (defina TRAMA_TEST_PG)'); process.exit(0); }
@@ -54,6 +55,28 @@ assert.deepEqual((await api('GET', '/api/arena')).data, { waiting: 0, playing: 0
 const st = (await api('GET', '/api/perfil', { profile: tok })).data.stats;
 assert.equal(st.matches, 1);
 assert.ok(st.achievements.length >= 1);
+
+// ---------- modos solo com semente: Sudoku e Caça-Palavras no ranking global ----------
+{
+  const su = await api('POST', '/api/solo/inicio', { profile: tok, body: { modo: 'classico-sudoku', variante: 'facil' } });
+  assert.equal(su.status, 200);
+  assert.equal(typeof su.data.seed, 'number');
+  assert.equal(su.data.variante, 'facil');
+  const { solution } = setupSudoku(su.data.seed, 'facil');
+  const sf = await api('POST', '/api/solo/fim', { profile: tok, body: { ticket: su.data.ticket, log: { solved: true, board: solution, errors: 0, seconds: 30 } } });
+  assert.ok(sf.data.score > 1000, 'sudoku resolvido pontua');
+  const fake = await api('POST', '/api/solo/inicio', { profile: tok, body: { modo: 'classico-sudoku', variante: 'facil' } });
+  const ff = await api('POST', '/api/solo/fim', { profile: tok, body: { ticket: fake.data.ticket, log: { solved: true, board: Array(81).fill(1), errors: 0, seconds: 30 } } });
+  assert.equal(ff.data.score, 0, 'sudoku inventado não pontua');
+  const rs = await api('GET', '/api/ranking?modo=classico-sudoku&variante=facil&periodo=hoje', { profile: tok });
+  assert.equal(rs.data.rows[0].score, sf.data.score);
+
+  const ws = await api('POST', '/api/solo/inicio', { profile: tok, body: { modo: 'classico-cacapalavras', variante: 'mistura' } });
+  const setup = setupWordSearch(ws.data.seed, 'mistura');
+  const wf = await api('POST', '/api/solo/fim', { profile: tok, body: { ticket: ws.data.ticket, log: { found: [0, 1, 2], extras: [], remaining: 0 } } });
+  assert.equal(wf.data.score, [0, 1, 2].reduce((t, k) => t + setup.placed[k].word.length * 10, 0));
+  assert.equal((await api('GET', '/api/ranking?modo=classico-cacapalavras&variante=mistura&periodo=hoje', { profile: tok })).data.rows.length, 1);
+}
 
 // ---------- partida em grupo pela sala durável (tempo controlado) ----------
 const db = postgres(URL_PG, { ...PG_OPTIONS, max: 4 });

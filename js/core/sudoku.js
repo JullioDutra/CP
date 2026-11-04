@@ -49,6 +49,11 @@ export const DIFFICULTY = {
   dificil: { label: 'Difícil', clues: 27, base: 5000 },
 };
 
+export const SUDOKU_ERROR_PENALTY = 150;
+export function sudokuScore(difficulty, seconds, errors) {
+  return Math.max(100, Math.round(DIFFICULTY[difficulty].base - seconds * 2 - errors * SUDOKU_ERROR_PENALTY));
+}
+
 export function generateSudoku(rng, difficulty = 'medio') {
   const solution = Array(81).fill(0);
   fill(solution, rng);

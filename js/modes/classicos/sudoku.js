@@ -1,15 +1,12 @@
 // MODO CLÁSSICO — Sudoku
 // Preencha a grade 9×9 para que cada linha, coluna e bloco 3×3 tenha os números de 1 a 9.
 import { h, createTimer, fmtTime, toast, hud } from '../../core/ui.js';
-import { createRng } from '../../core/rng.js';
-import { generateSudoku, DIFFICULTY } from '../../core/sudoku.js';
+import { DIFFICULTY, sudokuScore, SUDOKU_ERROR_PENALTY as ERROR_PENALTY } from '../../core/sudoku.js';
+import { setupSudoku, newSeed } from '../../core/solo-verify.js';
+import { startOnline } from '../../core/online-solo.js';
 
-const ERROR_PENALTY = 150;
 const MAX_ERRORS = 3;
-
-export function sudokuScore(difficulty, seconds, errors) {
-  return Math.max(100, Math.round(DIFFICULTY[difficulty].base - seconds * 2 - errors * ERROR_PENALTY));
-}
+export { sudokuScore };
 
 export default {
   id: 'classico-sudoku',
@@ -20,6 +17,10 @@ export default {
   options: { key: 'difficulty', label: 'Dificuldade', choices: Object.entries(DIFFICULTY).map(([k, v]) => [k, v.label]), default: 'medio' },
   rankingKey: (opts) => `classico-sudoku-${opts.difficulty}`,
   rankingVariants: Object.entries(DIFFICULTY).map(([k, v]) => [`classico-sudoku-${k}`, v.label]),
+  globalRanking: true,
+  globalVariant: (opts) => opts.difficulty || 'medio',
+  // pede a semente ao servidor para a partida valer no ranking global
+  prepare: (opts) => startOnline('classico-sudoku', { variante: opts.difficulty || 'medio' }),
   rules: [
     'Cada linha, coluna e bloco 3×3 precisa ter os números de 1 a 9, sem repetir.',
     'Toque numa casa e escolha o número (ou use o teclado). Modo "Notas" para rascunho.',
@@ -27,9 +28,9 @@ export default {
     `Com ${MAX_ERRORS} erros a partida termina.`,
   ],
   start(root, api, opts) {
-    const difficulty = opts.difficulty || 'medio';
-    const rng = createRng();
-    const { puzzle, solution } = generateSudoku(rng, difficulty);
+    const online = opts.online?.seed != null ? opts.online : null;
+    const difficulty = online?.variante || opts.difficulty || 'medio';
+    const { puzzle, solution } = setupSudoku(online ? online.seed : newSeed(), difficulty);
     const board = puzzle.slice();
     const notes = Array.from({ length: 81 }, () => new Set());
     let selected = board.indexOf(0);
@@ -131,6 +132,7 @@ export default {
         score,
         summary: [['Dificuldade', DIFFICULTY[difficulty].label], ['Tempo', fmtTime(secs)], ['Erros', errors], ['Resultado', solved ? 'Resolvido!' : 'Não resolvido']],
         extra: solved ? null : h('p', {}, 'Só partidas resolvidas entram no ranking.'),
+        online: online && solved && { ticket: online.ticket, log: { solved, board: board.slice(), errors, seconds: secs } },
       });
     }
 
